@@ -1,4 +1,3 @@
-import { DismissalType, ExtrasType } from "@/backend.d";
 import { AppFooter } from "@/components/AppFooter";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
+import { DismissalType, ExtrasType } from "@/hooks/useCricketScoring";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AlertTriangle, Edit2, Save } from "lucide-react";
 import { useState } from "react";
@@ -214,15 +214,17 @@ export function BallCorrectionPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(DismissalType).map((dt) => (
-                    <SelectItem key={dt} value={dt}>
-                      {dt === "hitwicket"
-                        ? "Hit Wicket"
-                        : dt === "runout"
-                          ? "Run Out"
-                          : dt.charAt(0).toUpperCase() + dt.slice(1)}
-                    </SelectItem>
-                  ))}
+                  {(Object.values(DismissalType) as DismissalType[]).map(
+                    (dt) => (
+                      <SelectItem key={dt} value={dt}>
+                        {dt === "hitwicket"
+                          ? "Hit Wicket"
+                          : dt === "runout"
+                            ? "Run Out"
+                            : dt.charAt(0).toUpperCase() + dt.slice(1)}
+                      </SelectItem>
+                    ),
+                  )}
                 </SelectContent>
               </Select>
             </div>

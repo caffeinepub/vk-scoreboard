@@ -22,6 +22,7 @@ export const UserRole = IDL.Variant({
   'guest' : IDL.Null,
 });
 export const Time = IDL.Int;
+export const UserProfile = IDL.Record({ 'name' : IDL.Text });
 export const MatchStatus = IDL.Variant({
   'live' : IDL.Null,
   'completed' : IDL.Null,
@@ -54,73 +55,17 @@ export const Team = IDL.Record({
   'color' : Color,
   'players' : IDL.Vec(Player),
 });
-export const InningsStatus = IDL.Variant({
-  'closed' : IDL.Null,
-  'active' : IDL.Null,
-});
-export const DismissalType = IDL.Variant({
-  'runout' : IDL.Null,
-  'hitwicket' : IDL.Null,
-  'stumping' : IDL.Null,
-  'bowled' : IDL.Null,
-  'caught' : IDL.Null,
-});
-export const ExtrasType = IDL.Variant({
-  'bye' : IDL.Null,
-  'noball' : IDL.Null,
-  'none' : IDL.Null,
-  'wide' : IDL.Null,
-  'legbye' : IDL.Null,
-});
-export const Ball = IDL.Record({
-  'strikerId' : IDL.Nat,
-  'ballNumber' : IDL.Nat,
-  'dismissalType' : IDL.Opt(DismissalType),
-  'runs' : IDL.Nat,
-  'extrasType' : ExtrasType,
-  'nonStrikerId' : IDL.Nat,
-  'overNumber' : IDL.Nat,
-  'isFreeHit' : IDL.Bool,
-  'isWicket' : IDL.Bool,
-  'fielderId' : IDL.Opt(IDL.Nat),
-  'bowlerId' : IDL.Nat,
-});
-export const Over = IDL.Vec(Ball);
-export const FallOfWicket = IDL.Record({
-  'ball' : IDL.Nat,
-  'batsmanId' : IDL.Nat,
-  'over' : IDL.Nat,
-  'score' : IDL.Nat,
-});
-export const Partnership = IDL.Record({
-  'startOver' : IDL.Nat,
-  'strikerId' : IDL.Nat,
-  'endOver' : IDL.Nat,
-  'runs' : IDL.Nat,
-  'nonStrikerId' : IDL.Nat,
-  'balls' : IDL.Nat,
-});
 export const Innings = IDL.Record({
-  'status' : InningsStatus,
-  'strikerId' : IDL.Nat,
+  'result' : IDL.Opt(IDL.Text),
   'bowlingTeamId' : IDL.Nat,
-  'overs' : IDL.Vec(Over),
   'byes' : IDL.Nat,
   'legByes' : IDL.Nat,
   'totalRuns' : IDL.Nat,
-  'nonStrikerId' : IDL.Nat,
   'noBalls' : IDL.Nat,
-  'wicketsFallen' : IDL.Vec(FallOfWicket),
+  'legalBalls' : IDL.Nat,
   'wickets' : IDL.Nat,
-  'balls' : IDL.Vec(Ball),
-  'overCount' : IDL.Nat,
-  'totalBalls' : IDL.Nat,
-  'currentPartnership' : IDL.Opt(Partnership),
   'isFirstInnings' : IDL.Bool,
-  'extras' : IDL.Nat,
-  'currentBowlerId' : IDL.Nat,
   'wides' : IDL.Nat,
-  'partnerships' : IDL.Vec(Partnership),
   'battingTeamId' : IDL.Nat,
 });
 export const Match = IDL.Record({
@@ -140,10 +85,37 @@ export const idlService = IDL.Service({
   'addTeam' : IDL.Func([IDL.Nat, IDL.Text, Color], [IDL.Nat], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
   'createMatch' : IDL.Func([IDL.Text, Time, IDL.Opt(IDL.Nat)], [IDL.Nat], []),
+  'deleteMatch' : IDL.Func([IDL.Nat], [], []),
+  'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getMatch' : IDL.Func([IDL.Nat], [Match], ['query']),
+  'getUserProfile' : IDL.Func(
+      [IDL.Principal],
+      [IDL.Opt(UserProfile)],
+      ['query'],
+    ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'listMatches' : IDL.Func([], [IDL.Vec(Match)], ['query']),
+  'rematch' : IDL.Func([IDL.Nat], [IDL.Nat], []),
+  'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'saveInningsResult' : IDL.Func(
+      [
+        IDL.Nat,
+        IDL.Bool,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Opt(IDL.Text),
+      ],
+      [],
+      [],
+    ),
 });
 
 export const idlInitArgs = [];
@@ -163,6 +135,7 @@ export const idlFactory = ({ IDL }) => {
     'guest' : IDL.Null,
   });
   const Time = IDL.Int;
+  const UserProfile = IDL.Record({ 'name' : IDL.Text });
   const MatchStatus = IDL.Variant({
     'live' : IDL.Null,
     'completed' : IDL.Null,
@@ -195,73 +168,17 @@ export const idlFactory = ({ IDL }) => {
     'color' : Color,
     'players' : IDL.Vec(Player),
   });
-  const InningsStatus = IDL.Variant({
-    'closed' : IDL.Null,
-    'active' : IDL.Null,
-  });
-  const DismissalType = IDL.Variant({
-    'runout' : IDL.Null,
-    'hitwicket' : IDL.Null,
-    'stumping' : IDL.Null,
-    'bowled' : IDL.Null,
-    'caught' : IDL.Null,
-  });
-  const ExtrasType = IDL.Variant({
-    'bye' : IDL.Null,
-    'noball' : IDL.Null,
-    'none' : IDL.Null,
-    'wide' : IDL.Null,
-    'legbye' : IDL.Null,
-  });
-  const Ball = IDL.Record({
-    'strikerId' : IDL.Nat,
-    'ballNumber' : IDL.Nat,
-    'dismissalType' : IDL.Opt(DismissalType),
-    'runs' : IDL.Nat,
-    'extrasType' : ExtrasType,
-    'nonStrikerId' : IDL.Nat,
-    'overNumber' : IDL.Nat,
-    'isFreeHit' : IDL.Bool,
-    'isWicket' : IDL.Bool,
-    'fielderId' : IDL.Opt(IDL.Nat),
-    'bowlerId' : IDL.Nat,
-  });
-  const Over = IDL.Vec(Ball);
-  const FallOfWicket = IDL.Record({
-    'ball' : IDL.Nat,
-    'batsmanId' : IDL.Nat,
-    'over' : IDL.Nat,
-    'score' : IDL.Nat,
-  });
-  const Partnership = IDL.Record({
-    'startOver' : IDL.Nat,
-    'strikerId' : IDL.Nat,
-    'endOver' : IDL.Nat,
-    'runs' : IDL.Nat,
-    'nonStrikerId' : IDL.Nat,
-    'balls' : IDL.Nat,
-  });
   const Innings = IDL.Record({
-    'status' : InningsStatus,
-    'strikerId' : IDL.Nat,
+    'result' : IDL.Opt(IDL.Text),
     'bowlingTeamId' : IDL.Nat,
-    'overs' : IDL.Vec(Over),
     'byes' : IDL.Nat,
     'legByes' : IDL.Nat,
     'totalRuns' : IDL.Nat,
-    'nonStrikerId' : IDL.Nat,
     'noBalls' : IDL.Nat,
-    'wicketsFallen' : IDL.Vec(FallOfWicket),
+    'legalBalls' : IDL.Nat,
     'wickets' : IDL.Nat,
-    'balls' : IDL.Vec(Ball),
-    'overCount' : IDL.Nat,
-    'totalBalls' : IDL.Nat,
-    'currentPartnership' : IDL.Opt(Partnership),
     'isFirstInnings' : IDL.Bool,
-    'extras' : IDL.Nat,
-    'currentBowlerId' : IDL.Nat,
     'wides' : IDL.Nat,
-    'partnerships' : IDL.Vec(Partnership),
     'battingTeamId' : IDL.Nat,
   });
   const Match = IDL.Record({
@@ -285,10 +202,37 @@ export const idlFactory = ({ IDL }) => {
     'addTeam' : IDL.Func([IDL.Nat, IDL.Text, Color], [IDL.Nat], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
     'createMatch' : IDL.Func([IDL.Text, Time, IDL.Opt(IDL.Nat)], [IDL.Nat], []),
+    'deleteMatch' : IDL.Func([IDL.Nat], [], []),
+    'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getMatch' : IDL.Func([IDL.Nat], [Match], ['query']),
+    'getUserProfile' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Opt(UserProfile)],
+        ['query'],
+      ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'listMatches' : IDL.Func([], [IDL.Vec(Match)], ['query']),
+    'rematch' : IDL.Func([IDL.Nat], [IDL.Nat], []),
+    'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'saveInningsResult' : IDL.Func(
+        [
+          IDL.Nat,
+          IDL.Bool,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Opt(IDL.Text),
+        ],
+        [],
+        [],
+      ),
   });
 };
 

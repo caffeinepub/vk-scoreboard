@@ -1,13 +1,54 @@
 import type { Match, MatchStatus } from "@/backend.d";
 import { AppFooter } from "@/components/AppFooter";
 import { AppHeader } from "@/components/AppHeader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useListMatches } from "@/hooks/useQueries";
+import { useAuth } from "@/hooks/useAuth";
+import { useDeleteMatch, useListMatches } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Activity, Calendar, ChevronRight, Trophy, Users } from "lucide-react";
+import {
+  Activity,
+  Calendar,
+  ChevronRight,
+  Trash2,
+  Trophy,
+  Users,
+} from "lucide-react";
+import { useState } from "react";
+
+const DELETED_MATCHES_KEY = "vk_deleted_matches";
+
+function getDeletedMatchIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_MATCHES_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function addDeletedMatchId(id: string): void {
+  try {
+    const existing = getDeletedMatchIds();
+    existing.add(id);
+    localStorage.setItem(DELETED_MATCHES_KEY, JSON.stringify([...existing]));
+  } catch {
+    // ignore
+  }
+}
 
 function StatusBadge({ status }: { status: MatchStatus }) {
   if (status === "live") {
@@ -32,7 +73,19 @@ function StatusBadge({ status }: { status: MatchStatus }) {
   );
 }
 
-function MatchCard({ match, index }: { match: Match; index: number }) {
+interface MatchCardProps {
+  match: Match;
+  index: number;
+  isLoggedIn: boolean;
+  onDeleteRequest: (matchId: bigint) => void;
+}
+
+function MatchCard({
+  match,
+  index,
+  isLoggedIn,
+  onDeleteRequest,
+}: MatchCardProps) {
   const navigate = useNavigate();
   const team1 = match.teams[0];
   const team2 = match.teams[1];
@@ -51,8 +104,7 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
 
   const oversStr = (inn: typeof innings1) => {
     if (!inn) return "";
-    const totalLegal =
-      Number(inn.totalBalls) - Number(inn.wides) - Number(inn.noBalls);
+    const totalLegal = Number(inn.legalBalls);
     return `${Math.floor(totalLegal / 6)}.${totalLegal % 6}`;
   };
 
@@ -65,27 +117,33 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
     : null;
 
   return (
-    <button
-      type="button"
-      data-ocid={`matches.item.${index}`}
+    <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border border-border/50 bg-card hover:border-primary/30 transition-all duration-300 cursor-pointer animate-slide-up w-full text-left",
+        "group relative overflow-hidden rounded-xl border border-border/50 bg-card hover:border-primary/30 transition-all duration-300 animate-slide-up",
         match.status === "live" &&
           "border-wicket-red/30 hover:border-wicket-red/50",
       )}
       style={{ animationDelay: `${index * 60}ms` }}
-      onClick={() =>
-        void navigate({ to: "/match/$id", params: { id: match.id.toString() } })
-      }
     >
       {/* Glow background for live matches */}
       {match.status === "live" && (
         <div className="absolute inset-0 bg-gradient-to-br from-wicket-red/5 to-transparent pointer-events-none" />
       )}
 
-      <div className="p-4 sm:p-5">
+      {/* Clickable area */}
+      <button
+        type="button"
+        data-ocid={`matches.item.${index}`}
+        className="w-full text-left cursor-pointer p-4 sm:p-5 block"
+        onClick={() =>
+          void navigate({
+            to: "/match/$id",
+            params: { id: match.id.toString() },
+          })
+        }
+      >
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-start justify-between gap-3 mb-3 pr-8">
           <div>
             <h3 className="font-display font-semibold text-foreground text-base leading-tight">
               {match.name}
@@ -177,11 +235,27 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
           </div>
         )}
 
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
           <ChevronRight className="w-4 h-4 text-primary" />
         </div>
-      </div>
-    </button>
+      </button>
+
+      {/* Delete button — only for logged-in admins, top-right corner */}
+      {isLoggedIn && (
+        <button
+          type="button"
+          data-ocid={`matches.delete_button.${index}`}
+          className="absolute top-3 right-3 z-10 w-7 h-7 flex items-center justify-center rounded-lg border border-destructive/30 bg-destructive/10 text-destructive/60 hover:text-destructive hover:bg-destructive/20 hover:border-destructive/50 transition-all opacity-0 group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteRequest(match.id);
+          }}
+          title="Delete match"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -198,10 +272,54 @@ function getTeamColorClass(color: string): string {
 }
 
 export function MatchListPage() {
-  const { data: matches, isLoading, isError } = useListMatches();
+  const { data: matches, isLoading, isError, refetch } = useListMatches();
+  const { isLoggedIn } = useAuth();
+  const deleteMatch = useDeleteMatch();
 
-  const liveMatches = matches?.filter((m) => m.status === "live") ?? [];
-  const otherMatches = matches?.filter((m) => m.status !== "live") ?? [];
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(getDeletedMatchIds);
+  const [deleteTargetId, setDeleteTargetId] = useState<bigint | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  const handleDeleteRequest = (matchId: bigint) => {
+    setDeleteTargetId(matchId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteTargetId === null) return;
+    const idStr = deleteTargetId.toString();
+
+    // Immediately hide client-side (fallback)
+    addDeletedMatchId(idStr);
+    setDeletedIds((prev) => {
+      const next = new Set(prev);
+      next.add(idStr);
+      return next;
+    });
+
+    // Fire-and-forget backend delete
+    deleteMatch.mutate(
+      { matchId: deleteTargetId },
+      {
+        onSettled: () => {
+          void refetch();
+        },
+      },
+    );
+
+    setDeleteDialogOpen(false);
+    setDeleteTargetId(null);
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setDeleteTargetId(null);
+  };
+
+  const visibleMatches =
+    matches?.filter((m) => !deletedIds.has(m.id.toString())) ?? [];
+  const liveMatches = visibleMatches.filter((m) => m.status === "live");
+  const otherMatches = visibleMatches.filter((m) => m.status !== "live");
 
   return (
     <div className="min-h-screen flex flex-col pitch-bg pitch-texture">
@@ -263,6 +381,8 @@ export function MatchListPage() {
                   key={match.id.toString()}
                   match={match}
                   index={i + 1}
+                  isLoggedIn={isLoggedIn}
+                  onDeleteRequest={handleDeleteRequest}
                 />
               ))}
             </div>
@@ -284,6 +404,8 @@ export function MatchListPage() {
                     key={match.id.toString()}
                     match={match}
                     index={i + 1}
+                    isLoggedIn={isLoggedIn}
+                    onDeleteRequest={handleDeleteRequest}
                   />
                 ))}
               </div>
@@ -321,6 +443,43 @@ export function MatchListPage() {
       </main>
 
       <AppFooter />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(o) => !o && handleDeleteCancel()}
+      >
+        <AlertDialogContent
+          className="bg-card border-border max-w-sm"
+          data-ocid="matches.delete.dialog"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Delete this match?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              This match will be permanently removed. This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              data-ocid="matches.delete.cancel_button"
+              onClick={handleDeleteCancel}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="matches.delete.confirm_button"
+              onClick={handleDeleteConfirm}
+              className="bg-destructive/20 text-destructive border border-destructive/40 hover:bg-destructive/30"
+            >
+              Delete Match
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

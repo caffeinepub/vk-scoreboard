@@ -1,4 +1,4 @@
-import { ExtrasType } from "@/backend.d";
+import { ExtrasType } from "@/hooks/useCricketScoring";
 import type { LocalBall } from "@/hooks/useCricketScoring";
 import { cn } from "@/lib/utils";
 

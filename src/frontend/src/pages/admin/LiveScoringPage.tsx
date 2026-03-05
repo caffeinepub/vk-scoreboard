@@ -1,4 +1,3 @@
-import { DismissalType, ExtrasType } from "@/backend.d";
 import type { Match, Player } from "@/backend.d";
 import { AppFooter } from "@/components/AppFooter";
 import { AppHeader } from "@/components/AppHeader";
@@ -30,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
+import { DismissalType, ExtrasType } from "@/hooks/useCricketScoring";
 import type { BallEvent } from "@/hooks/useCricketScoring";
 import {
   type AutoCloseReason,
@@ -39,7 +39,11 @@ import {
   saveSession,
   useCricketScoring,
 } from "@/hooks/useCricketScoring";
-import { useGetMatch } from "@/hooks/useQueries";
+import {
+  useGetMatch,
+  useRematch,
+  useSaveInningsResult,
+} from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -47,7 +51,10 @@ import {
   AlertTriangle,
   ChevronLeft,
   Edit2,
+  Loader2,
+  RefreshCw,
   RotateCcw,
+  Share2,
   StopCircle,
   Target,
   Trophy,
@@ -128,7 +135,7 @@ function WicketDialog({
               Dismissal Type
             </p>
             <div className="grid grid-cols-2 gap-2">
-              {Object.values(DismissalType).map((dt) => (
+              {(Object.values(DismissalType) as DismissalType[]).map((dt) => (
                 <button
                   type="button"
                   key={dt}
@@ -628,7 +635,10 @@ interface FinalResultScreenProps {
   innings1: InningsState;
   innings2: InningsState;
   autoCloseReason: AutoCloseReason;
+  maxOvers?: number;
   onNewMatch: () => void;
+  onRematch: () => void;
+  isRematching: boolean;
 }
 
 function buildResultText(
@@ -636,6 +646,7 @@ function buildResultText(
   innings1: InningsState,
   innings2: InningsState,
   autoCloseReason: AutoCloseReason,
+  maxOvers?: number,
 ): string {
   const team1 = match.teams[0];
   const team2 = match.teams[1];
@@ -646,10 +657,15 @@ function buildResultText(
     // Team 2 won — calculate wickets remaining
     const wicketsRemaining =
       (match.teams[1]?.players.length ?? 11) - 1 - innings2.wickets;
+    const ballsRemaining = maxOvers ? maxOvers * 6 - innings2.legalBalls : null;
+    const ballsStr =
+      ballsRemaining !== null && ballsRemaining > 0
+        ? ` (${ballsRemaining} ball${ballsRemaining === 1 ? "" : "s"} remaining)`
+        : "";
     if (wicketsRemaining > 0) {
-      return `${t2Name} won by ${wicketsRemaining} wicket${wicketsRemaining === 1 ? "" : "s"}`;
+      return `${t2Name} won by ${wicketsRemaining} wicket${wicketsRemaining === 1 ? "" : "s"}${ballsStr}`;
     }
-    return `${t2Name} won`;
+    return `${t2Name} won${ballsStr}`;
   }
 
   if (innings2.totalRuns > innings1.totalRuns) {
@@ -675,7 +691,10 @@ function FinalResultScreen({
   innings1,
   innings2,
   autoCloseReason,
+  maxOvers,
   onNewMatch,
+  onRematch,
+  isRematching,
 }: FinalResultScreenProps) {
   const team1 = match.teams[0];
   const team2 = match.teams[1];
@@ -684,6 +703,7 @@ function FinalResultScreen({
     innings1,
     innings2,
     autoCloseReason,
+    maxOvers,
   );
   const target = innings1.totalRuns + 1;
 
@@ -779,15 +799,30 @@ function FinalResultScreen({
         team={team2}
       />
 
-      {/* New match button */}
-      <Button
-        onClick={onNewMatch}
-        variant="outline"
-        className="w-full border-border/50 text-muted-foreground"
-        data-ocid="final_result.new_match.button"
-      >
-        Back to Matches
-      </Button>
+      {/* Action buttons */}
+      <div className="flex gap-3">
+        <Button
+          onClick={onRematch}
+          disabled={isRematching}
+          className="flex-1 bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 font-bold box-glow-green"
+          data-ocid="final_result.rematch.button"
+        >
+          {isRematching ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4 mr-2" />
+          )}
+          {isRematching ? "Creating..." : "Rematch"}
+        </Button>
+        <Button
+          onClick={onNewMatch}
+          variant="outline"
+          className="flex-1 border-border/50 text-muted-foreground"
+          data-ocid="final_result.new_match.button"
+        >
+          Back to Matches
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1402,8 +1437,9 @@ export function LiveScoringPage() {
     });
   }, [id, inningsNumber, innings1Snapshot, inningsState, sessionLoaded]);
 
-  // ─── Auto-close notifications ─────────────────────────────────────────────
+  // ─── Auto-close notifications & backend save ──────────────────────────────
   const prevStatusRef = useRef(inningsState.status);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: inningsState reference intentional — we only want to fire on status change
   useEffect(() => {
     if (
       prevStatusRef.current !== "closed" &&
@@ -1417,6 +1453,42 @@ export function LiveScoringPage() {
       } else if (reason === "all_out") {
         toast.error("All out! Innings ended.", { icon: "⚡" });
       }
+
+      // Fire-and-forget: save innings result to backend after auto-close
+      if (match && reason !== "manual") {
+        const snap = inningsState;
+        const team0Id = match.teams[0]?.id ?? 0n;
+        const team1Id = match.teams[1]?.id ?? 0n;
+        const battingTeamId = inningsNumber === 1 ? team0Id : team1Id;
+        const bowlingTeamId = inningsNumber === 1 ? team1Id : team0Id;
+        // For 2nd innings auto-close, we may have a result
+        let resultStr: string | null = null;
+        if (inningsNumber === 2 && innings1Snapshot) {
+          resultStr = buildResultText(
+            match,
+            innings1Snapshot,
+            snap,
+            reason ?? "manual",
+            maxOvers,
+          );
+        }
+        void saveInningsResult
+          .mutateAsync({
+            matchId,
+            isFirstInnings: inningsNumber === 1,
+            battingTeamId,
+            bowlingTeamId,
+            totalRuns: BigInt(snap.totalRuns),
+            wickets: BigInt(snap.wickets),
+            legalBalls: BigInt(snap.legalBalls),
+            wides: BigInt(snap.wides),
+            noBalls: BigInt(snap.noBalls),
+            byes: BigInt(snap.byes),
+            legByes: BigInt(snap.legByes),
+            result: resultStr,
+          })
+          .catch(() => {});
+      }
     }
     prevStatusRef.current = inningsState.status;
   }, [inningsState.status, inningsState.autoCloseReason]);
@@ -1424,6 +1496,10 @@ export function LiveScoringPage() {
   const [wicketDialogOpen, setWicketDialogOpen] = useState(false);
   const [endInningsDialogOpen, setEndInningsDialogOpen] = useState(false);
   const [showFinalResult, setShowFinalResult] = useState(false);
+  const [isRematching, setIsRematching] = useState(false);
+
+  const rematchMutation = useRematch();
+  const saveInningsResult = useSaveInningsResult();
 
   // Show final result when 2nd innings closes
   useEffect(() => {
@@ -1476,12 +1552,37 @@ export function LiveScoringPage() {
   );
 
   const handleEndInnings = useCallback(() => {
+    const snapshot = { ...scoring.inningsState };
     if (inningsNumber === 1) {
-      setInnings1Snapshot({ ...scoring.inningsState });
+      setInnings1Snapshot(snapshot);
     }
     scoring.closeInnings("manual");
     setEndInningsDialogOpen(false);
-  }, [scoring, inningsNumber]);
+
+    // Fire-and-forget: save innings result to backend
+    if (match) {
+      const team0Id = match.teams[0]?.id ?? 0n;
+      const team1Id = match.teams[1]?.id ?? 0n;
+      const battingTeamId = inningsNumber === 1 ? team0Id : team1Id;
+      const bowlingTeamId = inningsNumber === 1 ? team1Id : team0Id;
+      void saveInningsResult
+        .mutateAsync({
+          matchId,
+          isFirstInnings: inningsNumber === 1,
+          battingTeamId,
+          bowlingTeamId,
+          totalRuns: BigInt(snapshot.totalRuns),
+          wickets: BigInt(snapshot.wickets),
+          legalBalls: BigInt(snapshot.legalBalls),
+          wides: BigInt(snapshot.wides),
+          noBalls: BigInt(snapshot.noBalls),
+          byes: BigInt(snapshot.byes),
+          legByes: BigInt(snapshot.legByes),
+          result: null,
+        })
+        .catch(() => {});
+    }
+  }, [scoring, inningsNumber, match, matchId, saveInningsResult]);
 
   const handleStart2ndInnings = useCallback(() => {
     setInningsNumber(2);
@@ -1492,6 +1593,28 @@ export function LiveScoringPage() {
     clearSession(id);
     void navigate({ to: "/admin" });
   }, [id, navigate]);
+
+  const handleRematch = useCallback(() => {
+    setIsRematching(true);
+    rematchMutation.mutate(
+      { matchId },
+      {
+        onSuccess: (newMatchId) => {
+          clearSession(id);
+          void navigate({
+            to: "/admin/match/$id/score",
+            params: { id: newMatchId.toString() },
+          });
+        },
+        onError: () => {
+          // Fallback: navigate to admin on failure
+          setIsRematching(false);
+          clearSession(id);
+          void navigate({ to: "/admin" });
+        },
+      },
+    );
+  }, [rematchMutation, matchId, id, navigate]);
 
   const striker =
     inningsState.strikerId !== null
@@ -1595,17 +1718,37 @@ export function LiveScoringPage() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() =>
-              void navigate({ to: "/admin/match/$id/correct", params: { id } })
-            }
-            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            data-ocid="scoring.edit_ball.button"
-          >
-            <Edit2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Edit</span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                const link = `${window.location.origin}/match/${id}`;
+                navigator.clipboard.writeText(link).then(
+                  () => toast.success("Link copied!"),
+                  () => toast.error("Failed to copy link"),
+                );
+              }}
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors p-1"
+              data-ocid="scoring.share.button"
+              title="Share scoreboard link"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                void navigate({
+                  to: "/admin/match/$id/correct",
+                  params: { id },
+                })
+              }
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              data-ocid="scoring.edit_ball.button"
+            >
+              <Edit2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Edit</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1617,7 +1760,10 @@ export function LiveScoringPage() {
             innings1={innings1Snapshot}
             innings2={inningsState}
             autoCloseReason={inningsState.autoCloseReason}
+            maxOvers={maxOvers}
             onNewMatch={handleNewMatch}
+            onRematch={handleRematch}
+            isRematching={isRematching}
           />
         ) : inningsState.status === "not-started" ? (
           <SetupScreen
@@ -1640,6 +1786,29 @@ export function LiveScoringPage() {
           />
         ) : (
           <>
+            {/* ── Required Runs Banner (2nd innings) ── */}
+            {inningsNumber === 2 &&
+              target !== undefined &&
+              requiredRuns !== null &&
+              requiredRuns > 0 && (
+                <div className="rounded-xl border border-cricket-gold/40 bg-cricket-gold/10 px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-4 h-4 text-cricket-gold shrink-0" />
+                    <span className="text-cricket-gold font-bold text-sm">
+                      Need{" "}
+                      <span className="text-lg font-black">{requiredRuns}</span>{" "}
+                      runs
+                      {requiredBalls !== null && requiredBalls > 0
+                        ? ` from ${requiredBalls} ball${requiredBalls === 1 ? "" : "s"}`
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground font-mono shrink-0">
+                    Target: {target}
+                  </div>
+                </div>
+              )}
+
             {/* ── Score Banner ── */}
             <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
               <div className="px-4 py-3 flex items-end justify-between gap-4">
@@ -1647,7 +1816,7 @@ export function LiveScoringPage() {
                   <div className="font-score font-black text-5xl text-foreground glow-green leading-none">
                     {inningsState.totalRuns}/{inningsState.wickets}
                   </div>
-                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground font-mono">
+                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground font-mono flex-wrap">
                     <span>
                       {oversString}
                       {maxOvers ? ` / ${maxOvers}` : ""} ov
@@ -1662,6 +1831,17 @@ export function LiveScoringPage() {
                         <span>Ext {inningsState.extras}</span>
                       </>
                     )}
+                    {/* Last over badge */}
+                    {maxOvers &&
+                      inningsState.currentOver === maxOvers - 1 &&
+                      inningsState.currentOverLegalBalls < 6 && (
+                        <span
+                          data-ocid="scoring.last_over.toast"
+                          className="ml-1 px-2 py-0.5 rounded-full bg-wicket-red/20 border border-wicket-red/40 text-wicket-red font-bold text-[10px] uppercase tracking-wider"
+                        >
+                          Last Over!
+                        </span>
+                      )}
                   </div>
                 </div>
 
@@ -1674,33 +1854,6 @@ export function LiveScoringPage() {
                   </div>
                 </div>
               </div>
-
-              {/* Target / required banner */}
-              {inningsNumber === 2 && target !== undefined && (
-                <div className="px-4 pb-2 flex items-center justify-between gap-3 text-sm">
-                  <div className="flex items-center gap-1.5 text-electric-blue font-semibold">
-                    <Target className="w-3.5 h-3.5" />
-                    Target: {target}
-                  </div>
-                  {requiredRuns !== null && requiredRuns > 0 && (
-                    <div className="text-xs text-muted-foreground font-mono">
-                      Need{" "}
-                      <span className="font-bold text-cricket-gold">
-                        {requiredRuns}
-                      </span>{" "}
-                      runs
-                      {requiredBalls !== null && requiredBalls > 0
-                        ? ` off ${requiredBalls} balls`
-                        : ""}
-                    </div>
-                  )}
-                  {requiredRuns === 0 && (
-                    <div className="text-xs text-neon-green font-bold">
-                      Target reached!
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Over progress */}
               <div className="px-4 pb-3">

@@ -10,19 +10,6 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
-export interface Ball {
-  'strikerId' : bigint,
-  'ballNumber' : bigint,
-  'dismissalType' : [] | [DismissalType],
-  'runs' : bigint,
-  'extrasType' : ExtrasType,
-  'nonStrikerId' : bigint,
-  'overNumber' : bigint,
-  'isFreeHit' : boolean,
-  'isWicket' : boolean,
-  'fielderId' : [] | [bigint],
-  'bowlerId' : bigint,
-}
 export interface BattingStats {
   'fours' : bigint,
   'runs' : bigint,
@@ -42,47 +29,19 @@ export type Color = { 'red' : null } |
   { 'black' : null } |
   { 'white' : null } |
   { 'yellow' : null };
-export type DismissalType = { 'runout' : null } |
-  { 'hitwicket' : null } |
-  { 'stumping' : null } |
-  { 'bowled' : null } |
-  { 'caught' : null };
-export type ExtrasType = { 'bye' : null } |
-  { 'noball' : null } |
-  { 'none' : null } |
-  { 'wide' : null } |
-  { 'legbye' : null };
-export interface FallOfWicket {
-  'ball' : bigint,
-  'batsmanId' : bigint,
-  'over' : bigint,
-  'score' : bigint,
-}
 export interface Innings {
-  'status' : InningsStatus,
-  'strikerId' : bigint,
+  'result' : [] | [string],
   'bowlingTeamId' : bigint,
-  'overs' : Array<Over>,
   'byes' : bigint,
   'legByes' : bigint,
   'totalRuns' : bigint,
-  'nonStrikerId' : bigint,
   'noBalls' : bigint,
-  'wicketsFallen' : Array<FallOfWicket>,
+  'legalBalls' : bigint,
   'wickets' : bigint,
-  'balls' : Array<Ball>,
-  'overCount' : bigint,
-  'totalBalls' : bigint,
-  'currentPartnership' : [] | [Partnership],
   'isFirstInnings' : boolean,
-  'extras' : bigint,
-  'currentBowlerId' : bigint,
   'wides' : bigint,
-  'partnerships' : Array<Partnership>,
   'battingTeamId' : bigint,
 }
-export type InningsStatus = { 'closed' : null } |
-  { 'active' : null };
 export interface Match {
   'id' : bigint,
   'status' : MatchStatus,
@@ -96,15 +55,6 @@ export interface Match {
 export type MatchStatus = { 'live' : null } |
   { 'completed' : null } |
   { 'setup' : null };
-export type Over = Array<Ball>;
-export interface Partnership {
-  'startOver' : bigint,
-  'strikerId' : bigint,
-  'endOver' : bigint,
-  'runs' : bigint,
-  'nonStrikerId' : bigint,
-  'balls' : bigint,
-}
 export interface Player {
   'id' : bigint,
   'bowlingStats' : BowlingStats,
@@ -120,6 +70,7 @@ export interface Team {
   'players' : Array<Player>,
 }
 export type Time = bigint;
+export interface UserProfile { 'name' : string }
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
   { 'guest' : null };
@@ -129,10 +80,32 @@ export interface _SERVICE {
   'addTeam' : ActorMethod<[bigint, string, Color], bigint>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'createMatch' : ActorMethod<[string, Time, [] | [bigint]], bigint>,
+  'deleteMatch' : ActorMethod<[bigint], undefined>,
+  'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getMatch' : ActorMethod<[bigint], Match>,
+  'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'listMatches' : ActorMethod<[], Array<Match>>,
+  'rematch' : ActorMethod<[bigint], bigint>,
+  'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
+  'saveInningsResult' : ActorMethod<
+    [
+      bigint,
+      boolean,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      [] | [string],
+    ],
+    undefined
+  >,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

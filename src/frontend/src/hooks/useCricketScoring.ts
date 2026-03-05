@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer } from "react";
-import { DismissalType, ExtrasType } from "../backend.d";
+import { DismissalType, ExtrasType } from "../types/cricket";
+export { DismissalType, ExtrasType } from "../types/cricket";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

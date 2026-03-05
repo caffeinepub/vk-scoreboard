@@ -98,11 +98,18 @@ export interface Player {
     teamId: bigint;
 }
 export type Time = bigint;
-export interface FallOfWicket {
-    ball: bigint;
-    batsmanId: bigint;
-    over: bigint;
-    score: bigint;
+export interface Innings {
+    result?: string;
+    bowlingTeamId: bigint;
+    byes: bigint;
+    legByes: bigint;
+    totalRuns: bigint;
+    noBalls: bigint;
+    legalBalls: bigint;
+    wickets: bigint;
+    isFirstInnings: boolean;
+    wides: bigint;
+    battingTeamId: bigint;
 }
 export interface BowlingStats {
     maidens: bigint;
@@ -127,51 +134,9 @@ export interface Match {
     innings: Array<Innings>;
     maxOvers?: bigint;
 }
-export interface Ball {
-    strikerId: bigint;
-    ballNumber: bigint;
-    dismissalType?: DismissalType;
-    runs: bigint;
-    extrasType: ExtrasType;
-    nonStrikerId: bigint;
-    overNumber: bigint;
-    isFreeHit: boolean;
-    isWicket: boolean;
-    fielderId?: bigint;
-    bowlerId: bigint;
+export interface UserProfile {
+    name: string;
 }
-export interface Innings {
-    status: InningsStatus;
-    strikerId: bigint;
-    bowlingTeamId: bigint;
-    overs: Array<Over>;
-    byes: bigint;
-    legByes: bigint;
-    totalRuns: bigint;
-    nonStrikerId: bigint;
-    noBalls: bigint;
-    wicketsFallen: Array<FallOfWicket>;
-    wickets: bigint;
-    balls: Array<Ball>;
-    overCount: bigint;
-    totalBalls: bigint;
-    currentPartnership?: Partnership;
-    isFirstInnings: boolean;
-    extras: bigint;
-    currentBowlerId: bigint;
-    wides: bigint;
-    partnerships: Array<Partnership>;
-    battingTeamId: bigint;
-}
-export interface Partnership {
-    startOver: bigint;
-    strikerId: bigint;
-    endOver: bigint;
-    runs: bigint;
-    nonStrikerId: bigint;
-    balls: bigint;
-}
-export type Over = Array<Ball>;
 export interface Team {
     id: bigint;
     name: string;
@@ -185,24 +150,6 @@ export enum Color {
     black = "black",
     white = "white",
     yellow = "yellow"
-}
-export enum DismissalType {
-    runout = "runout",
-    hitwicket = "hitwicket",
-    stumping = "stumping",
-    bowled = "bowled",
-    caught = "caught"
-}
-export enum ExtrasType {
-    bye = "bye",
-    noball = "noball",
-    none = "none",
-    wide = "wide",
-    legbye = "legbye"
-}
-export enum InningsStatus {
-    closed = "closed",
-    active = "active"
 }
 export enum MatchStatus {
     live = "live",
@@ -220,12 +167,18 @@ export interface backendInterface {
     addTeam(matchId: bigint, teamName: string, color: Color): Promise<bigint>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     createMatch(name: string, date: Time, maxOvers: bigint | null): Promise<bigint>;
+    deleteMatch(matchId: bigint): Promise<void>;
+    getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getMatch(matchId: bigint): Promise<Match>;
+    getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     listMatches(): Promise<Array<Match>>;
+    rematch(matchId: bigint): Promise<bigint>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    saveInningsResult(matchId: bigint, isFirstInnings: boolean, battingTeamId: bigint, bowlingTeamId: bigint, totalRuns: bigint, wickets: bigint, legalBalls: bigint, wides: bigint, noBalls: bigint, byes: bigint, legByes: bigint, result: string | null): Promise<void>;
 }
-import type { Ball as _Ball, Color as _Color, DismissalType as _DismissalType, ExtrasType as _ExtrasType, FallOfWicket as _FallOfWicket, Innings as _Innings, InningsStatus as _InningsStatus, Match as _Match, MatchStatus as _MatchStatus, Over as _Over, Partnership as _Partnership, Player as _Player, Team as _Team, Time as _Time, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
+import type { Color as _Color, Innings as _Innings, Match as _Match, MatchStatus as _MatchStatus, Player as _Player, Team as _Team, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
@@ -298,32 +251,74 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async deleteMatch(arg0: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.deleteMatch(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.deleteMatch(arg0);
+            return result;
+        }
+    }
+    async getCallerUserProfile(): Promise<UserProfile | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCallerUserProfile();
+                return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCallerUserProfile();
+            return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getCallerUserRole(): Promise<UserRole> {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserRole();
-                return from_candid_UserRole_n6(this._uploadFile, this._downloadFile, result);
+                return from_candid_UserRole_n7(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserRole();
-            return from_candid_UserRole_n6(this._uploadFile, this._downloadFile, result);
+            return from_candid_UserRole_n7(this._uploadFile, this._downloadFile, result);
         }
     }
     async getMatch(arg0: bigint): Promise<Match> {
         if (this.processError) {
             try {
                 const result = await this.actor.getMatch(arg0);
-                return from_candid_Match_n8(this._uploadFile, this._downloadFile, result);
+                return from_candid_Match_n9(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getMatch(arg0);
-            return from_candid_Match_n8(this._uploadFile, this._downloadFile, result);
+            return from_candid_Match_n9(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getUserProfile(arg0);
+                return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getUserProfile(arg0);
+            return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
         }
     }
     async isCallerAdmin(): Promise<boolean> {
@@ -344,189 +339,87 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.listMatches();
-                return from_candid_vec_n35(this._uploadFile, this._downloadFile, result);
+                return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.listMatches();
-            return from_candid_vec_n35(this._uploadFile, this._downloadFile, result);
+            return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async rematch(arg0: bigint): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.rematch(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.rematch(arg0);
+            return result;
+        }
+    }
+    async saveCallerUserProfile(arg0: UserProfile): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveCallerUserProfile(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveCallerUserProfile(arg0);
+            return result;
+        }
+    }
+    async saveInningsResult(arg0: bigint, arg1: boolean, arg2: bigint, arg3: bigint, arg4: bigint, arg5: bigint, arg6: bigint, arg7: bigint, arg8: bigint, arg9: bigint, arg10: bigint, arg11: string | null): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveInningsResult(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, to_candid_opt_n24(this._uploadFile, this._downloadFile, arg11));
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveInningsResult(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, to_candid_opt_n24(this._uploadFile, this._downloadFile, arg11));
+            return result;
         }
     }
 }
-function from_candid_Ball_n26(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Ball): Ball {
-    return from_candid_record_n27(_uploadFile, _downloadFile, value);
+function from_candid_Color_n17(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Color): Color {
+    return from_candid_variant_n18(_uploadFile, _downloadFile, value);
 }
-function from_candid_Color_n16(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Color): Color {
-    return from_candid_variant_n17(_uploadFile, _downloadFile, value);
+function from_candid_Innings_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Innings): Innings {
+    return from_candid_record_n21(_uploadFile, _downloadFile, value);
 }
-function from_candid_DismissalType_n29(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _DismissalType): DismissalType {
-    return from_candid_variant_n30(_uploadFile, _downloadFile, value);
+function from_candid_MatchStatus_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _MatchStatus): MatchStatus {
+    return from_candid_variant_n12(_uploadFile, _downloadFile, value);
 }
-function from_candid_ExtrasType_n31(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _ExtrasType): ExtrasType {
-    return from_candid_variant_n32(_uploadFile, _downloadFile, value);
+function from_candid_Match_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Match): Match {
+    return from_candid_record_n10(_uploadFile, _downloadFile, value);
 }
-function from_candid_InningsStatus_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _InningsStatus): InningsStatus {
-    return from_candid_variant_n22(_uploadFile, _downloadFile, value);
+function from_candid_Team_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Team): Team {
+    return from_candid_record_n16(_uploadFile, _downloadFile, value);
 }
-function from_candid_Innings_n19(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Innings): Innings {
-    return from_candid_record_n20(_uploadFile, _downloadFile, value);
+function from_candid_UserRole_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
+    return from_candid_variant_n8(_uploadFile, _downloadFile, value);
 }
-function from_candid_MatchStatus_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _MatchStatus): MatchStatus {
-    return from_candid_variant_n11(_uploadFile, _downloadFile, value);
-}
-function from_candid_Match_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Match): Match {
-    return from_candid_record_n9(_uploadFile, _downloadFile, value);
-}
-function from_candid_Over_n24(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Over): Over {
-    return from_candid_vec_n25(_uploadFile, _downloadFile, value);
-}
-function from_candid_Team_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Team): Team {
-    return from_candid_record_n15(_uploadFile, _downloadFile, value);
-}
-function from_candid_UserRole_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
-    return from_candid_variant_n7(_uploadFile, _downloadFile, value);
-}
-function from_candid_opt_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
+function from_candid_opt_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n28(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_DismissalType]): DismissalType | null {
-    return value.length === 0 ? null : from_candid_DismissalType_n29(_uploadFile, _downloadFile, value[0]);
-}
-function from_candid_opt_n33(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [bigint]): bigint | null {
+function from_candid_opt_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [bigint]): bigint | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n34(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_Partnership]): Partnership | null {
+function from_candid_opt_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_record_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    id: bigint;
-    name: string;
-    color: _Color;
-    players: Array<_Player>;
-}): {
-    id: bigint;
-    name: string;
-    color: Color;
-    players: Array<Player>;
-} {
-    return {
-        id: value.id,
-        name: value.name,
-        color: from_candid_Color_n16(_uploadFile, _downloadFile, value.color),
-        players: value.players
-    };
-}
-function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    status: _InningsStatus;
-    strikerId: bigint;
-    bowlingTeamId: bigint;
-    overs: Array<_Over>;
-    byes: bigint;
-    legByes: bigint;
-    totalRuns: bigint;
-    nonStrikerId: bigint;
-    noBalls: bigint;
-    wicketsFallen: Array<_FallOfWicket>;
-    wickets: bigint;
-    balls: Array<_Ball>;
-    overCount: bigint;
-    totalBalls: bigint;
-    currentPartnership: [] | [_Partnership];
-    isFirstInnings: boolean;
-    extras: bigint;
-    currentBowlerId: bigint;
-    wides: bigint;
-    partnerships: Array<_Partnership>;
-    battingTeamId: bigint;
-}): {
-    status: InningsStatus;
-    strikerId: bigint;
-    bowlingTeamId: bigint;
-    overs: Array<Over>;
-    byes: bigint;
-    legByes: bigint;
-    totalRuns: bigint;
-    nonStrikerId: bigint;
-    noBalls: bigint;
-    wicketsFallen: Array<FallOfWicket>;
-    wickets: bigint;
-    balls: Array<Ball>;
-    overCount: bigint;
-    totalBalls: bigint;
-    currentPartnership?: Partnership;
-    isFirstInnings: boolean;
-    extras: bigint;
-    currentBowlerId: bigint;
-    wides: bigint;
-    partnerships: Array<Partnership>;
-    battingTeamId: bigint;
-} {
-    return {
-        status: from_candid_InningsStatus_n21(_uploadFile, _downloadFile, value.status),
-        strikerId: value.strikerId,
-        bowlingTeamId: value.bowlingTeamId,
-        overs: from_candid_vec_n23(_uploadFile, _downloadFile, value.overs),
-        byes: value.byes,
-        legByes: value.legByes,
-        totalRuns: value.totalRuns,
-        nonStrikerId: value.nonStrikerId,
-        noBalls: value.noBalls,
-        wicketsFallen: value.wicketsFallen,
-        wickets: value.wickets,
-        balls: from_candid_vec_n25(_uploadFile, _downloadFile, value.balls),
-        overCount: value.overCount,
-        totalBalls: value.totalBalls,
-        currentPartnership: record_opt_to_undefined(from_candid_opt_n34(_uploadFile, _downloadFile, value.currentPartnership)),
-        isFirstInnings: value.isFirstInnings,
-        extras: value.extras,
-        currentBowlerId: value.currentBowlerId,
-        wides: value.wides,
-        partnerships: value.partnerships,
-        battingTeamId: value.battingTeamId
-    };
-}
-function from_candid_record_n27(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    strikerId: bigint;
-    ballNumber: bigint;
-    dismissalType: [] | [_DismissalType];
-    runs: bigint;
-    extrasType: _ExtrasType;
-    nonStrikerId: bigint;
-    overNumber: bigint;
-    isFreeHit: boolean;
-    isWicket: boolean;
-    fielderId: [] | [bigint];
-    bowlerId: bigint;
-}): {
-    strikerId: bigint;
-    ballNumber: bigint;
-    dismissalType?: DismissalType;
-    runs: bigint;
-    extrasType: ExtrasType;
-    nonStrikerId: bigint;
-    overNumber: bigint;
-    isFreeHit: boolean;
-    isWicket: boolean;
-    fielderId?: bigint;
-    bowlerId: bigint;
-} {
-    return {
-        strikerId: value.strikerId,
-        ballNumber: value.ballNumber,
-        dismissalType: record_opt_to_undefined(from_candid_opt_n28(_uploadFile, _downloadFile, value.dismissalType)),
-        runs: value.runs,
-        extrasType: from_candid_ExtrasType_n31(_uploadFile, _downloadFile, value.extrasType),
-        nonStrikerId: value.nonStrikerId,
-        overNumber: value.overNumber,
-        isFreeHit: value.isFreeHit,
-        isWicket: value.isWicket,
-        fielderId: record_opt_to_undefined(from_candid_opt_n33(_uploadFile, _downloadFile, value.fielderId)),
-        bowlerId: value.bowlerId
-    };
-}
-function from_candid_record_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     id: bigint;
     status: _MatchStatus;
     result: [] | [string];
@@ -547,16 +440,73 @@ function from_candid_record_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint
 } {
     return {
         id: value.id,
-        status: from_candid_MatchStatus_n10(_uploadFile, _downloadFile, value.status),
-        result: record_opt_to_undefined(from_candid_opt_n12(_uploadFile, _downloadFile, value.result)),
-        teams: from_candid_vec_n13(_uploadFile, _downloadFile, value.teams),
+        status: from_candid_MatchStatus_n11(_uploadFile, _downloadFile, value.status),
+        result: record_opt_to_undefined(from_candid_opt_n13(_uploadFile, _downloadFile, value.result)),
+        teams: from_candid_vec_n14(_uploadFile, _downloadFile, value.teams),
         date: value.date,
         name: value.name,
-        innings: from_candid_vec_n18(_uploadFile, _downloadFile, value.innings),
-        maxOvers: record_opt_to_undefined(from_candid_opt_n33(_uploadFile, _downloadFile, value.maxOvers))
+        innings: from_candid_vec_n19(_uploadFile, _downloadFile, value.innings),
+        maxOvers: record_opt_to_undefined(from_candid_opt_n22(_uploadFile, _downloadFile, value.maxOvers))
     };
 }
-function from_candid_variant_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_record_n16(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    id: bigint;
+    name: string;
+    color: _Color;
+    players: Array<_Player>;
+}): {
+    id: bigint;
+    name: string;
+    color: Color;
+    players: Array<Player>;
+} {
+    return {
+        id: value.id,
+        name: value.name,
+        color: from_candid_Color_n17(_uploadFile, _downloadFile, value.color),
+        players: value.players
+    };
+}
+function from_candid_record_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    result: [] | [string];
+    bowlingTeamId: bigint;
+    byes: bigint;
+    legByes: bigint;
+    totalRuns: bigint;
+    noBalls: bigint;
+    legalBalls: bigint;
+    wickets: bigint;
+    isFirstInnings: boolean;
+    wides: bigint;
+    battingTeamId: bigint;
+}): {
+    result?: string;
+    bowlingTeamId: bigint;
+    byes: bigint;
+    legByes: bigint;
+    totalRuns: bigint;
+    noBalls: bigint;
+    legalBalls: bigint;
+    wickets: bigint;
+    isFirstInnings: boolean;
+    wides: bigint;
+    battingTeamId: bigint;
+} {
+    return {
+        result: record_opt_to_undefined(from_candid_opt_n13(_uploadFile, _downloadFile, value.result)),
+        bowlingTeamId: value.bowlingTeamId,
+        byes: value.byes,
+        legByes: value.legByes,
+        totalRuns: value.totalRuns,
+        noBalls: value.noBalls,
+        legalBalls: value.legalBalls,
+        wickets: value.wickets,
+        isFirstInnings: value.isFirstInnings,
+        wides: value.wides,
+        battingTeamId: value.battingTeamId
+    };
+}
+function from_candid_variant_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     live: null;
 } | {
     completed: null;
@@ -565,7 +515,7 @@ function from_candid_variant_n11(_uploadFile: (file: ExternalBlob) => Promise<Ui
 }): MatchStatus {
     return "live" in value ? MatchStatus.live : "completed" in value ? MatchStatus.completed : "setup" in value ? MatchStatus.setup : value;
 }
-function from_candid_variant_n17(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_variant_n18(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     red: null;
 } | {
     blue: null;
@@ -580,40 +530,7 @@ function from_candid_variant_n17(_uploadFile: (file: ExternalBlob) => Promise<Ui
 }): Color {
     return "red" in value ? Color.red : "blue" in value ? Color.blue : "green" in value ? Color.green : "black" in value ? Color.black : "white" in value ? Color.white : "yellow" in value ? Color.yellow : value;
 }
-function from_candid_variant_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    closed: null;
-} | {
-    active: null;
-}): InningsStatus {
-    return "closed" in value ? InningsStatus.closed : "active" in value ? InningsStatus.active : value;
-}
-function from_candid_variant_n30(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    runout: null;
-} | {
-    hitwicket: null;
-} | {
-    stumping: null;
-} | {
-    bowled: null;
-} | {
-    caught: null;
-}): DismissalType {
-    return "runout" in value ? DismissalType.runout : "hitwicket" in value ? DismissalType.hitwicket : "stumping" in value ? DismissalType.stumping : "bowled" in value ? DismissalType.bowled : "caught" in value ? DismissalType.caught : value;
-}
-function from_candid_variant_n32(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    bye: null;
-} | {
-    noball: null;
-} | {
-    none: null;
-} | {
-    wide: null;
-} | {
-    legbye: null;
-}): ExtrasType {
-    return "bye" in value ? ExtrasType.bye : "noball" in value ? ExtrasType.noball : "none" in value ? ExtrasType.none : "wide" in value ? ExtrasType.wide : "legbye" in value ? ExtrasType.legbye : value;
-}
-function from_candid_variant_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_variant_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     admin: null;
 } | {
     user: null;
@@ -622,26 +539,23 @@ function from_candid_variant_n7(_uploadFile: (file: ExternalBlob) => Promise<Uin
 }): UserRole {
     return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
 }
-function from_candid_vec_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Team>): Array<Team> {
-    return value.map((x)=>from_candid_Team_n14(_uploadFile, _downloadFile, x));
+function from_candid_vec_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Team>): Array<Team> {
+    return value.map((x)=>from_candid_Team_n15(_uploadFile, _downloadFile, x));
 }
-function from_candid_vec_n18(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Innings>): Array<Innings> {
-    return value.map((x)=>from_candid_Innings_n19(_uploadFile, _downloadFile, x));
+function from_candid_vec_n19(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Innings>): Array<Innings> {
+    return value.map((x)=>from_candid_Innings_n20(_uploadFile, _downloadFile, x));
 }
-function from_candid_vec_n23(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Over>): Array<Over> {
-    return value.map((x)=>from_candid_Over_n24(_uploadFile, _downloadFile, x));
-}
-function from_candid_vec_n25(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Ball>): Array<Ball> {
-    return value.map((x)=>from_candid_Ball_n26(_uploadFile, _downloadFile, x));
-}
-function from_candid_vec_n35(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Match>): Array<Match> {
-    return value.map((x)=>from_candid_Match_n8(_uploadFile, _downloadFile, x));
+function from_candid_vec_n23(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Match>): Array<Match> {
+    return value.map((x)=>from_candid_Match_n9(_uploadFile, _downloadFile, x));
 }
 function to_candid_Color_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Color): _Color {
     return to_candid_variant_n2(_uploadFile, _downloadFile, value);
 }
 function to_candid_UserRole_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
     return to_candid_variant_n4(_uploadFile, _downloadFile, value);
+}
+function to_candid_opt_n24(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: string | null): [] | [string] {
+    return value === null ? candid_none() : candid_some(value);
 }
 function to_candid_opt_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: bigint | null): [] | [bigint] {
     return value === null ? candid_none() : candid_some(value);

@@ -20,6 +20,14 @@ async function waitForActor(
   );
 }
 
+function isAuthError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.message.includes("Unauthorized") ||
+      err.message.includes("unauthorized"))
+  );
+}
+
 // ─── List all matches ─────────────────────────────────────────────────────────
 export function useListMatches() {
   const { actor, isFetching } = useActor();
@@ -136,6 +144,107 @@ export function useAddPlayer() {
     },
     retry: 2,
     retryDelay: 1500,
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["match", variables.matchId.toString()],
+      });
+    },
+  });
+}
+
+// ─── Delete match mutation ────────────────────────────────────────────────────
+export function useDeleteMatch() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ matchId }: { matchId: bigint }) => {
+      try {
+        const resolvedActor = await waitForActor(() => actor);
+        await resolvedActor.deleteMatch(matchId);
+      } catch (err) {
+        if (isAuthError(err)) return; // fail silently on auth errors
+        throw err;
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["matches"] });
+    },
+  });
+}
+
+// ─── Rematch mutation ─────────────────────────────────────────────────────────
+export function useRematch() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ matchId }: { matchId: bigint }): Promise<bigint> => {
+      try {
+        const resolvedActor = await waitForActor(() => actor);
+        return await resolvedActor.rematch(matchId);
+      } catch (err) {
+        if (isAuthError(err)) throw err; // caller handles auth error as fallback
+        throw err;
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["matches"] });
+    },
+  });
+}
+
+// ─── Save innings result mutation ─────────────────────────────────────────────
+export function useSaveInningsResult() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      matchId,
+      isFirstInnings,
+      battingTeamId,
+      bowlingTeamId,
+      totalRuns,
+      wickets,
+      legalBalls,
+      wides,
+      noBalls,
+      byes,
+      legByes,
+      result,
+    }: {
+      matchId: bigint;
+      isFirstInnings: boolean;
+      battingTeamId: bigint;
+      bowlingTeamId: bigint;
+      totalRuns: bigint;
+      wickets: bigint;
+      legalBalls: bigint;
+      wides: bigint;
+      noBalls: bigint;
+      byes: bigint;
+      legByes: bigint;
+      result: string | null;
+    }) => {
+      try {
+        const resolvedActor = await waitForActor(() => actor);
+        await resolvedActor.saveInningsResult(
+          matchId,
+          isFirstInnings,
+          battingTeamId,
+          bowlingTeamId,
+          totalRuns,
+          wickets,
+          legalBalls,
+          wides,
+          noBalls,
+          byes,
+          legByes,
+          result,
+        );
+      } catch (err) {
+        if (isAuthError(err)) return; // fail silently
+        throw err;
+      }
+    },
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
         queryKey: ["match", variables.matchId.toString()],

@@ -2,55 +2,66 @@
 
 ## Current State
 
-- Full innings scoring system exists (ball-by-ball via `useCricketScoring` hook, reducer-based local state)
-- Match data is stored in backend (Motoko) but **live scoring state is ephemeral** — resets on page refresh
-- Innings end only via manual "End Innings" button; no auto-end on overs/wickets/target
-- No target calculation or display for 2nd innings
-- No final result screen with winner, margin, or detailed summary
-- Match history exists via `listMatches` backend query, but **result string is never saved** after match
-- maxOvers field exists in Match model and CreateMatchPage, but is not enforced during scoring
-- No LocalStorage persistence for live scoring state
+- Full-stack cricket scoreboard app with Motoko backend and React frontend
+- Admin login (username: vagesh / password: vk888) to create and score matches
+- Backend stores matches, teams, players via `createMatch`, `addTeam`, `addPlayer`, `getMatch`, `listMatches`
+- Frontend uses LocalStorage for scoring session persistence (ball-by-ball)
+- Live scoring page (LiveScoringPage) uses `useCricketScoring` reducer hook
+- End Innings button exists with confirmation dialog
+- 1st innings summary shows target; 2nd innings has live "Need X runs" counter
+- Auto-close triggers exist for target_reached, overs_complete, all_out
+- PublicScoreboardPage polls backend for live view
+- No delete match functionality
+- No rematch functionality
+- Live share works only via direct URL; no explicit "Share" button
+- Score data stored in LocalStorage only (lost on different device/browser)
+- Overs limit enforced in frontend but not always stopping innings cleanly
 
 ## Requested Changes (Diff)
 
 ### Add
-
-- **LocalStorage persistence**: save entire scoring session (both innings states, innings number, innings1Snapshot) to localStorage keyed by matchId; restore on page load
-- **Target system**: after 1st innings ends, auto-calculate target = team1Runs + 1; display prominently in 2nd innings score banner and setup screen
-- **Auto-end conditions for 2nd innings**:
-  - Team 2 reaches or exceeds target → auto-close innings as win
-  - All overs completed (based on match maxOvers) → auto-close innings
-  - All wickets lost (wickets === total players - 1) → auto-close innings
-- **Auto-end for 1st innings**: overs completed or all wickets lost → auto-close innings
-- **Final result screen**: shown after 2nd innings closes; displays winning team name, both scores, overs played, wickets, result text (e.g. "Team B won by 3 wickets" or "Team A won by 10 runs"); saves result to match history via backend
-- **Result save to backend**: call a new `completeMatch` endpoint (or update via `updateMatchResult`) to mark match as completed and persist result string + innings snapshots
-- **Required runs/balls display**: in live 2nd innings banner show "Need X runs off Y balls"
-- **maxOvers enforcement**: when match has maxOvers set, show over count vs limit; auto-end innings when overs reach maxOvers limit
+- `deleteMatch(matchId)` backend function — removes a match from the map
+- `rematch(matchId)` backend function — creates a new match copying team/player names, returns new matchId
+- `saveInningsResult(matchId, inningsIndex, totalRuns, wickets, totalBalls, result)` — persist innings data to backend so public viewers see accurate data
+- Delete button on each match card on the home page (MatchListPage) with confirmation dialog
+- Rematch button on the final result screen — keeps same teams/players, resets score, navigates to new match
+- Share Match Link button during scoring and on public scoreboard — copies URL to clipboard and shows toast
+- "Need X runs from Y balls" banner displayed prominently during 2nd innings chase, calculated in real time
+- Target banner displayed at the top of the 2nd innings scoreboard (both admin and public views)
+- Balls remaining calculated from maxOvers * 6 - legalBalls (when maxOvers set); otherwise from total balls for unlimited overs it just shows balls faced
 
 ### Modify
-
-- `useCricketScoring` hook: add target param, auto-close trigger, persist/restore from localStorage
-- `LiveScoringPage`: add target banner for 2nd innings setup screen, show target in score header, show "Need X runs" live, add final result screen component, wire auto-end effects, save result to backend
-- Remove the "Scoring is local. Refresh will reset scores." warning banner (since data will now be persisted)
-- `CreateMatchPage`: make maxOvers field with preset quick-pick buttons (5, 10, 20 overs)
+- Target calculation: already `innings1.totalRuns + 1` — verify it is consistently used everywhere and fix any off-by-one
+- Auto-end on target reached: already implemented in `checkAutoClose` — verify it fires and shows result correctly
+- Result string: already uses `buildResultText` — add "with X balls remaining" for target_reached case when maxOvers is set
+- Final result screen: add Rematch button alongside "Back to Matches"
+- Overs limit: already in `checkAutoClose` — add a visual over limit progress bar / warning when last over approaching
+- PublicScoreboardPage: poll every 3s when live (was 5s); add share button; show target banner more prominently
+- MatchListPage: add Delete button to each match card (only shown when logged in as admin)
+- Match cards: show over limit label if set
 
 ### Remove
-
-- The ephemeral-scoring warning banner in LiveScoringPage
+- Nothing removed
 
 ## Implementation Plan
 
-1. Add `useMatchStorage` hook (localStorage load/save for innings session state keyed by matchId)
-2. Update `InningsState` and `useCricketScoring`:
-   - Accept `target` and `maxOvers` and `totalPlayers` params
-   - After each ball, check auto-close conditions and set `status: "closed"` automatically with a reason
-   - Expose `autoCloseReason` for UI messaging
-3. Update `LiveScoringPage`:
-   - On mount, restore from localStorage; save on every state change
-   - Pass target/maxOvers/totalPlayers to scoring hook
-   - Show target banner in 2nd innings SetupScreen
-   - Show "Need X runs off Y balls" in active score banner during 2nd innings
-   - After 2nd innings closes, render `FinalResultScreen` component (winner, scores, overs, wickets, result string)
-   - Save result to backend on match completion
-4. Update `CreateMatchPage`: add quick-pick buttons for common over counts (5, 10, 20)
-5. Remove ephemeral-scoring warning
+1. **Backend**: Add `deleteMatch`, `rematch`, and `saveInningsResult` functions to main.mo. `rematch` copies team+player names into a new match and returns its ID. `saveInningsResult` updates a match's innings array with final data and sets result text.
+
+2. **useQueries.ts**: Add `useDeleteMatch`, `useRematch`, `useSaveInningsResult` mutation hooks.
+
+3. **MatchListPage.tsx**: Add Delete button (trash icon) to each match card. Show only when `isLoggedIn`. Confirmation alert dialog before delete. On confirm call `deleteMatch` mutation and invalidate queries.
+
+4. **LiveScoringPage.tsx**:
+   - After 2nd innings auto-closes with `target_reached`, calculate balls remaining = maxOvers*6 - legalBalls (if maxOvers) or just show wickets margin
+   - Add Share button (copy URL to clipboard) in the scoring header
+   - Add Rematch button on FinalResultScreen — calls `rematch(matchId)`, then navigates to new match setup
+   - Fix result string to include "with X balls remaining" when target reached with overs set
+   - Call `useSaveInningsResult` when innings closes to persist to backend
+
+5. **PublicScoreboardPage.tsx**:
+   - Poll every 3s when match is live
+   - Add Share button (navigator.clipboard copy)
+   - Show target and "Need X runs from Y balls" banner prominently when 2nd innings is active
+   - Pull target from innings1.totalRuns + 1
+
+6. **useCricketScoring.ts**: Ensure `requiredBalls` is also computed when no maxOvers by just showing balls bowled vs target (unlimited chase shows runs needed but not balls remaining). Keep existing logic.

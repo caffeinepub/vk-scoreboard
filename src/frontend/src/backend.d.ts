@@ -16,11 +16,18 @@ export interface Player {
     teamId: bigint;
 }
 export type Time = bigint;
-export interface FallOfWicket {
-    ball: bigint;
-    batsmanId: bigint;
-    over: bigint;
-    score: bigint;
+export interface Innings {
+    result?: string;
+    bowlingTeamId: bigint;
+    byes: bigint;
+    legByes: bigint;
+    totalRuns: bigint;
+    noBalls: bigint;
+    legalBalls: bigint;
+    wickets: bigint;
+    isFirstInnings: boolean;
+    wides: bigint;
+    battingTeamId: bigint;
 }
 export interface BowlingStats {
     maidens: bigint;
@@ -45,51 +52,9 @@ export interface Match {
     innings: Array<Innings>;
     maxOvers?: bigint;
 }
-export interface Ball {
-    strikerId: bigint;
-    ballNumber: bigint;
-    dismissalType?: DismissalType;
-    runs: bigint;
-    extrasType: ExtrasType;
-    nonStrikerId: bigint;
-    overNumber: bigint;
-    isFreeHit: boolean;
-    isWicket: boolean;
-    fielderId?: bigint;
-    bowlerId: bigint;
+export interface UserProfile {
+    name: string;
 }
-export interface Innings {
-    status: InningsStatus;
-    strikerId: bigint;
-    bowlingTeamId: bigint;
-    overs: Array<Over>;
-    byes: bigint;
-    legByes: bigint;
-    totalRuns: bigint;
-    nonStrikerId: bigint;
-    noBalls: bigint;
-    wicketsFallen: Array<FallOfWicket>;
-    wickets: bigint;
-    balls: Array<Ball>;
-    overCount: bigint;
-    totalBalls: bigint;
-    currentPartnership?: Partnership;
-    isFirstInnings: boolean;
-    extras: bigint;
-    currentBowlerId: bigint;
-    wides: bigint;
-    partnerships: Array<Partnership>;
-    battingTeamId: bigint;
-}
-export interface Partnership {
-    startOver: bigint;
-    strikerId: bigint;
-    endOver: bigint;
-    runs: bigint;
-    nonStrikerId: bigint;
-    balls: bigint;
-}
-export type Over = Array<Ball>;
 export interface Team {
     id: bigint;
     name: string;
@@ -103,24 +68,6 @@ export enum Color {
     black = "black",
     white = "white",
     yellow = "yellow"
-}
-export enum DismissalType {
-    runout = "runout",
-    hitwicket = "hitwicket",
-    stumping = "stumping",
-    bowled = "bowled",
-    caught = "caught"
-}
-export enum ExtrasType {
-    bye = "bye",
-    noball = "noball",
-    none = "none",
-    wide = "wide",
-    legbye = "legbye"
-}
-export enum InningsStatus {
-    closed = "closed",
-    active = "active"
 }
 export enum MatchStatus {
     live = "live",
@@ -137,8 +84,14 @@ export interface backendInterface {
     addTeam(matchId: bigint, teamName: string, color: Color): Promise<bigint>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     createMatch(name: string, date: Time, maxOvers: bigint | null): Promise<bigint>;
+    deleteMatch(matchId: bigint): Promise<void>;
+    getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getMatch(matchId: bigint): Promise<Match>;
+    getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     listMatches(): Promise<Array<Match>>;
+    rematch(matchId: bigint): Promise<bigint>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    saveInningsResult(matchId: bigint, isFirstInnings: boolean, battingTeamId: bigint, bowlingTeamId: bigint, totalRuns: bigint, wickets: bigint, legalBalls: bigint, wides: bigint, noBalls: bigint, byes: bigint, legByes: bigint, result: string | null): Promise<void>;
 }
