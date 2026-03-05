@@ -1,0 +1,291 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Bricolage Grotesque — Display headings ─── */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/assets/fonts/BricolageGrotesque[opsz,wdth,wght].woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ─── Outfit — Body / UI ─── */
+@font-face {
+  font-family: "Outfit";
+  src: url("/assets/fonts/Outfit[wght].woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ─── Geist Mono — Stats / numbers ─── */
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/assets/fonts/GeistMono[wght].woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+
+    /* ── Gully Cricket Dark Theme ── */
+    /* Background: Deep pitch-black navy */
+    --background: 0.1 0.015 250;
+    --foreground: 0.97 0.005 200;
+
+    /* Card: Slightly elevated surface */
+    --card: 0.14 0.02 250;
+    --card-foreground: 0.97 0.005 200;
+
+    /* Popover */
+    --popover: 0.16 0.022 248;
+    --popover-foreground: 0.97 0.005 200;
+
+    /* Primary: Neon green — the signature cricket accent */
+    --primary: 0.82 0.22 145;
+    --primary-foreground: 0.08 0.01 250;
+
+    /* Secondary: Electric blue */
+    --secondary: 0.18 0.025 248;
+    --secondary-foreground: 0.85 0.08 200;
+
+    /* Muted */
+    --muted: 0.17 0.02 248;
+    --muted-foreground: 0.52 0.04 240;
+
+    /* Accent: Bright gold (4s/6s) */
+    --accent: 0.22 0.03 248;
+    --accent-foreground: 0.95 0.005 200;
+
+    /* Destructive: Hot red wicket */
+    --destructive: 0.62 0.22 25;
+    --destructive-foreground: 0.97 0.005 200;
+
+    /* Border/Input */
+    --border: 0.28 0.03 248;
+    --input: 0.22 0.025 248;
+    --ring: 0.82 0.22 145;
+
+    /* Charts */
+    --chart-1: 0.82 0.22 145;
+    --chart-2: 0.72 0.18 200;
+    --chart-3: 0.85 0.18 80;
+    --chart-4: 0.62 0.22 25;
+    --chart-5: 0.68 0.15 280;
+
+    /* Sidebar */
+    --sidebar: 0.12 0.018 250;
+    --sidebar-foreground: 0.97 0.005 200;
+    --sidebar-primary: 0.82 0.22 145;
+    --sidebar-primary-foreground: 0.08 0.01 250;
+    --sidebar-accent: 0.18 0.025 248;
+    --sidebar-accent-foreground: 0.97 0.005 200;
+    --sidebar-border: 0.28 0.03 248;
+    --sidebar-ring: 0.82 0.22 145;
+
+    /* Custom cricket tokens */
+    --neon-green: 0.82 0.22 145;
+    --electric-blue: 0.72 0.2 210;
+    --cricket-gold: 0.82 0.18 80;
+    --wicket-red: 0.62 0.22 25;
+    --wide-purple: 0.62 0.18 280;
+    --noball-orange: 0.72 0.2 50;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Outfit", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ─── Score display numbers ─── */
+  .font-score {
+    font-family: "Geist Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  /* ─── Headings ─── */
+  h1, h2, h3 {
+    font-family: "Bricolage Grotesque", sans-serif;
+  }
+}
+
+/* ─── Neon glow utilities ─── */
+@layer utilities {
+  .glow-green {
+    text-shadow: 0 0 20px oklch(var(--neon-green) / 0.8), 0 0 40px oklch(var(--neon-green) / 0.4);
+  }
+  .glow-blue {
+    text-shadow: 0 0 20px oklch(var(--electric-blue) / 0.8), 0 0 40px oklch(var(--electric-blue) / 0.4);
+  }
+  .glow-gold {
+    text-shadow: 0 0 20px oklch(var(--cricket-gold) / 0.8), 0 0 40px oklch(var(--cricket-gold) / 0.4);
+  }
+  .glow-red {
+    text-shadow: 0 0 20px oklch(var(--wicket-red) / 0.8), 0 0 40px oklch(var(--wicket-red) / 0.4);
+  }
+  .box-glow-green {
+    box-shadow: 0 0 16px oklch(var(--neon-green) / 0.35), 0 0 32px oklch(var(--neon-green) / 0.15);
+  }
+  .box-glow-red {
+    box-shadow: 0 0 16px oklch(var(--wicket-red) / 0.5), 0 0 32px oklch(var(--wicket-red) / 0.2);
+  }
+  .box-glow-gold {
+    box-shadow: 0 0 16px oklch(var(--cricket-gold) / 0.5), 0 0 32px oklch(var(--cricket-gold) / 0.2);
+  }
+  .box-glow-blue {
+    box-shadow: 0 0 16px oklch(var(--electric-blue) / 0.4), 0 0 32px oklch(var(--electric-blue) / 0.15);
+  }
+
+  /* Score flash animation */
+  .score-flash {
+    animation: scoreFlash 0.4s ease-out;
+  }
+
+  /* Ball event animations */
+  .ball-pulse {
+    animation: ballPulse 0.3s ease-out;
+  }
+
+  /* Live indicator pulse */
+  .live-pulse {
+    animation: livePulse 2s ease-in-out infinite;
+  }
+
+  /* Shimmer for loading */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      oklch(var(--card)) 25%,
+      oklch(var(--muted)) 50%,
+      oklch(var(--card)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+/* ─── Keyframes ─── */
+@keyframes scoreFlash {
+  0% { opacity: 1; transform: scale(1); }
+  30% { opacity: 0.6; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes ballPulse {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px oklch(var(--wicket-red) / 0.8); }
+  50% { opacity: 0.5; box-shadow: 0 0 12px oklch(var(--wicket-red) / 0.4); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.35s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out both;
+}
+
+/* ─── Accordion ─── */
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+/* ─── Cricket score board background mesh ─── */
+.pitch-bg {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, oklch(0.18 0.08 145 / 0.3) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 100%, oklch(0.16 0.06 210 / 0.2) 0%, transparent 50%),
+    oklch(var(--background));
+}
+
+/* ─── Pitch texture overlay ─── */
+.pitch-texture {
+  background-image: 
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 40px,
+      oklch(1 0 0 / 0.015) 40px,
+      oklch(1 0 0 / 0.015) 41px
+    );
+}
+
+/* ─── Mobile scoring buttons — ensure large touch targets ─── */
+.score-btn {
+  min-height: 56px;
+  min-width: 56px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* ─── Ball indicator pills ─── */
+.ball-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ─── Scrollbar styling ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: oklch(var(--muted));
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(var(--border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--muted-foreground) / 0.5);
+}
