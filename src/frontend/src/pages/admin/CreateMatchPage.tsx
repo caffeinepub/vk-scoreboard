@@ -6,20 +6,82 @@ import { Label } from "@/components/ui/label";
 import { useActor } from "@/hooks/useActor";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreateMatch } from "@/hooks/useQueries";
+import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
-import { Calendar, Loader2, Plus, Shield } from "lucide-react";
-import { useState } from "react";
+import { Calendar, Loader2, Plus, RefreshCw, Shield, Wifi } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export function CreateMatchPage() {
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
-  const { isFetching } = useActor();
+  const { actor, isFetching } = useActor();
   const createMatch = useCreateMatch();
 
   const [name, setName] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [maxOvers, setMaxOvers] = useState("");
+
+  // Track whether we're in an early "preparing" window (first 2s)
+  const [isPreparing, setIsPreparing] = useState(true);
+  const preparingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Show "Backend loading..." banner until actor is ready or 8s passes
+  const [showBackendBanner, setShowBackendBanner] = useState(!actor);
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Pending submit args for retry
+  const pendingArgsRef = useRef<{
+    name: string;
+    date: bigint;
+    maxOvers: bigint | null;
+  } | null>(null);
+
+  useEffect(() => {
+    preparingTimerRef.current = setTimeout(() => setIsPreparing(false), 2000);
+    bannerTimerRef.current = setTimeout(
+      () => setShowBackendBanner(false),
+      8000,
+    );
+    return () => {
+      if (preparingTimerRef.current) clearTimeout(preparingTimerRef.current);
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+    };
+  }, []);
+
+  // Hide banner once actor becomes available
+  useEffect(() => {
+    if (actor && !isFetching) {
+      setShowBackendBanner(false);
+      setIsPreparing(false);
+    }
+  }, [actor, isFetching]);
+
+  const isBackendReady = !!actor && !isFetching;
+  const isButtonDisabled =
+    createMatch.isPending || !name.trim() || (!isBackendReady && isPreparing);
+
+  const doSubmit = async (
+    matchName: string,
+    matchDate: bigint,
+    overs: bigint | null,
+  ) => {
+    try {
+      const matchId = await createMatch.mutateAsync({
+        name: matchName,
+        date: matchDate,
+        maxOvers: overs,
+      });
+      toast.success("Match created!");
+      void navigate({
+        to: "/admin/match/$id/setup",
+        params: { id: matchId.toString() },
+      });
+    } catch (err) {
+      console.error(err);
+      // error shown via createMatch.isError
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,21 +91,64 @@ export function CreateMatchPage() {
     const dateNs = BigInt(dateMs) * BigInt(1_000_000);
     const overs = maxOvers.trim() ? BigInt(maxOvers) : null;
 
-    try {
-      const matchId = await createMatch.mutateAsync({
-        name: name.trim(),
-        date: dateNs,
-        maxOvers: overs,
-      });
-      toast.success("Match created!");
-      void navigate({
-        to: "/admin/match/$id/setup",
-        params: { id: matchId.toString() },
-      });
-    } catch (err) {
-      toast.error("Failed to create match");
-      console.error(err);
+    pendingArgsRef.current = {
+      name: name.trim(),
+      date: dateNs,
+      maxOvers: overs,
+    };
+    await doSubmit(name.trim(), dateNs, overs);
+  };
+
+  const handleRetry = async () => {
+    if (!pendingArgsRef.current) return;
+    createMatch.reset();
+    const { name: n, date: d, maxOvers: o } = pendingArgsRef.current;
+    await doSubmit(n, d, o);
+  };
+
+  const getErrorMessage = () => {
+    if (!createMatch.error) return null;
+    const msg =
+      createMatch.error instanceof Error ? createMatch.error.message : "";
+    if (msg.includes("timed out")) return msg;
+    if (msg.includes("not ready") || msg.includes("Connecting"))
+      return "Still connecting to backend — please wait a moment and try again.";
+    if (msg.includes("Unauthorized") || msg.includes("403"))
+      return "Authorization error. Please log out and back in.";
+    return "Connection failed. Please wait a moment and try again.";
+  };
+
+  const getSubmitLabel = () => {
+    if (isFetching) {
+      return (
+        <>
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          Connecting to backend...
+        </>
+      );
     }
+    if (isPreparing && !isBackendReady) {
+      return (
+        <>
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          Preparing...
+        </>
+      );
+    }
+    if (createMatch.isPending) {
+      return (
+        <>
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          Creating...
+        </>
+      );
+    }
+    return (
+      <>
+        <Plus className="w-4 h-4 mr-2" />
+        Create Match & Setup Teams
+      </>
+    );
   };
 
   if (!isLoggedIn) {
@@ -86,6 +191,19 @@ export function CreateMatchPage() {
         <h1 className="font-display font-black text-2xl text-foreground mb-6">
           Create New Match
         </h1>
+
+        {/* Backend loading banner */}
+        {showBackendBanner && (
+          <div
+            data-ocid="create_match.loading_state"
+            className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 border border-border/40 rounded-xl px-4 py-3 mb-4 animate-pulse"
+          >
+            <Wifi className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span>
+              Connecting to backend — you can fill the form while it loads.
+            </span>
+          </div>
+        )}
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
           <div
@@ -142,6 +260,40 @@ export function CreateMatchPage() {
                   (optional)
                 </span>
               </Label>
+              {/* Quick-pick buttons */}
+              <div className="flex gap-2 flex-wrap">
+                {[5, 6, 8, 10, 15, 20].map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    onClick={() =>
+                      setMaxOvers(maxOvers === o.toString() ? "" : o.toString())
+                    }
+                    className={cn(
+                      "h-9 px-3 rounded-lg border text-sm font-mono font-bold transition-all",
+                      maxOvers === o.toString()
+                        ? "bg-primary/20 border-primary/60 text-primary"
+                        : "bg-muted/50 border-border/50 text-muted-foreground hover:border-border hover:text-foreground",
+                    )}
+                    data-ocid={`create_match.overs_${o}.button`}
+                  >
+                    {o}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setMaxOvers("")}
+                  className={cn(
+                    "h-9 px-3 rounded-lg border text-sm font-semibold transition-all",
+                    maxOvers === ""
+                      ? "bg-muted/80 border-border text-foreground"
+                      : "bg-muted/30 border-border/40 text-muted-foreground hover:border-border",
+                  )}
+                  data-ocid="create_match.overs_unlimited.button"
+                >
+                  Unlimited
+                </button>
+              </div>
               <Input
                 id="max-overs"
                 data-ocid="create_match.max_overs.input"
@@ -150,7 +302,7 @@ export function CreateMatchPage() {
                 max="50"
                 value={maxOvers}
                 onChange={(e) => setMaxOvers(e.target.value)}
-                placeholder="e.g. 10 — leave blank for unlimited"
+                placeholder="or type custom overs..."
                 className="h-12 bg-input border-border/60 text-foreground placeholder:text-muted-foreground/60 focus:border-primary/60 focus:ring-primary/20"
               />
               <p className="text-xs text-muted-foreground">
@@ -161,40 +313,33 @@ export function CreateMatchPage() {
 
           {/* Error */}
           {createMatch.isError && (
-            <p
+            <div
               data-ocid="create_match.error_state"
-              className="text-sm text-destructive"
+              className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 space-y-2"
             >
-              {createMatch.error instanceof Error &&
-              createMatch.error.message.includes("not ready")
-                ? "Still connecting to backend — please wait a moment and try again."
-                : "Failed to create match. Please try again."}
-            </p>
+              <p className="text-sm text-destructive">{getErrorMessage()}</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void handleRetry()}
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 h-8 text-xs"
+                data-ocid="create_match.retry.button"
+              >
+                <RefreshCw className="w-3 h-3 mr-1.5" />
+                Retry
+              </Button>
+            </div>
           )}
 
           {/* Submit */}
           <Button
             type="submit"
-            disabled={createMatch.isPending || !name.trim() || isFetching}
+            disabled={isButtonDisabled}
             className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-base box-glow-green"
             data-ocid="create_match.submit_button"
           >
-            {isFetching ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Connecting...
-              </>
-            ) : createMatch.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Match & Setup Teams
-              </>
-            )}
+            {getSubmitLabel()}
           </Button>
         </form>
       </main>

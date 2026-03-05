@@ -1,6 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { backendInterface } from "../backend";
 import type { Color, Match } from "../backend.d";
 import { useActor } from "./useActor";
+
+// ─── Helper: wait for actor to be ready ──────────────────────────────────────
+async function waitForActor(
+  getActor: () => backendInterface | null,
+  timeoutMs = 10000,
+  intervalMs = 500,
+): Promise<backendInterface> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const a = getActor();
+    if (a) return a;
+    await new Promise<void>((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(
+    "Backend connection timed out. Please refresh and try again.",
+  );
+}
 
 // ─── List all matches ─────────────────────────────────────────────────────────
 export function useListMatches() {
@@ -58,12 +76,11 @@ export function useCreateMatch() {
       date: bigint;
       maxOvers: bigint | null;
     }) => {
-      if (!actor)
-        throw new Error("Actor not ready - please try again in a moment");
-      return actor.createMatch(name, date, maxOvers);
+      const resolvedActor = await waitForActor(() => actor);
+      return resolvedActor.createMatch(name, date, maxOvers);
     },
     retry: 2,
-    retryDelay: 1000,
+    retryDelay: 1500,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["matches"] });
     },
@@ -84,9 +101,11 @@ export function useAddTeam() {
       teamName: string;
       color: Color;
     }) => {
-      if (!actor) throw new Error("Not authenticated");
-      return actor.addTeam(matchId, teamName, color);
+      const resolvedActor = await waitForActor(() => actor);
+      return resolvedActor.addTeam(matchId, teamName, color);
     },
+    retry: 2,
+    retryDelay: 1500,
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
         queryKey: ["match", variables.matchId.toString()],
@@ -112,9 +131,11 @@ export function useAddPlayer() {
       playerName: string;
       jerseyNumber: bigint;
     }) => {
-      if (!actor) throw new Error("Not authenticated");
-      return actor.addPlayer(matchId, teamId, playerName, jerseyNumber);
+      const resolvedActor = await waitForActor(() => actor);
+      return resolvedActor.addPlayer(matchId, teamId, playerName, jerseyNumber);
     },
+    retry: 2,
+    retryDelay: 1500,
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
         queryKey: ["match", variables.matchId.toString()],

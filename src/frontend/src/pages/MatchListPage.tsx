@@ -229,8 +229,11 @@ export function MatchListPage() {
         {isLoading && (
           <div data-ocid="matches.loading_state" className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders have no stable identity
-              <Skeleton key={i} className="h-28 rounded-xl shimmer" />
+              <Skeleton
+                // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders have no stable identity
+                key={i}
+                className="h-28 rounded-xl shimmer animate-pulse"
+              />
             ))}
           </div>
         )}

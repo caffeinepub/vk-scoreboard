@@ -30,8 +30,13 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
+import type { BallEvent } from "@/hooks/useCricketScoring";
 import {
+  type AutoCloseReason,
   type InningsState,
+  clearSession,
+  loadSession,
+  saveSession,
   useCricketScoring,
 } from "@/hooks/useCricketScoring";
 import { useGetMatch } from "@/hooks/useQueries";
@@ -45,9 +50,10 @@ import {
   RotateCcw,
   StopCircle,
   Target,
+  Trophy,
   Zap,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -615,6 +621,256 @@ function EndInningsConfirmDialog({
   );
 }
 
+// ─── Final Result Screen ──────────────────────────────────────────────────────
+
+interface FinalResultScreenProps {
+  match: Match;
+  innings1: InningsState;
+  innings2: InningsState;
+  autoCloseReason: AutoCloseReason;
+  onNewMatch: () => void;
+}
+
+function buildResultText(
+  match: Match,
+  innings1: InningsState,
+  innings2: InningsState,
+  autoCloseReason: AutoCloseReason,
+): string {
+  const team1 = match.teams[0];
+  const team2 = match.teams[1];
+  const t1Name = team1?.name ?? "Team 1";
+  const t2Name = team2?.name ?? "Team 2";
+
+  if (autoCloseReason === "target_reached") {
+    // Team 2 won — calculate wickets remaining
+    const wicketsRemaining =
+      (match.teams[1]?.players.length ?? 11) - 1 - innings2.wickets;
+    if (wicketsRemaining > 0) {
+      return `${t2Name} won by ${wicketsRemaining} wicket${wicketsRemaining === 1 ? "" : "s"}`;
+    }
+    return `${t2Name} won`;
+  }
+
+  if (innings2.totalRuns > innings1.totalRuns) {
+    const wicketsRemaining =
+      (match.teams[1]?.players.length ?? 11) - 1 - innings2.wickets;
+    if (wicketsRemaining > 0) {
+      return `${t2Name} won by ${wicketsRemaining} wicket${wicketsRemaining === 1 ? "" : "s"}`;
+    }
+    return `${t2Name} won`;
+  }
+
+  if (innings2.totalRuns === innings1.totalRuns) {
+    return "Match Tied";
+  }
+
+  // Team 1 won
+  const runMargin = innings1.totalRuns - innings2.totalRuns;
+  return `${t1Name} won by ${runMargin} run${runMargin === 1 ? "" : "s"}`;
+}
+
+function FinalResultScreen({
+  match,
+  innings1,
+  innings2,
+  autoCloseReason,
+  onNewMatch,
+}: FinalResultScreenProps) {
+  const team1 = match.teams[0];
+  const team2 = match.teams[1];
+  const resultText = buildResultText(
+    match,
+    innings1,
+    innings2,
+    autoCloseReason,
+  );
+  const target = innings1.totalRuns + 1;
+
+  const inn1OversStr = `${innings1.currentOver}.${innings1.currentOverLegalBalls}`;
+  const inn2OversStr = `${innings2.currentOver}.${innings2.currentOverLegalBalls}`;
+
+  const isTeam2Won =
+    autoCloseReason === "target_reached" ||
+    innings2.totalRuns > innings1.totalRuns;
+  const isTied =
+    innings2.totalRuns === innings1.totalRuns &&
+    autoCloseReason !== "target_reached";
+
+  return (
+    <div className="space-y-4 animate-fade-in" data-ocid="final_result.panel">
+      {/* Winner banner */}
+      <div className="rounded-2xl border border-cricket-gold/40 bg-gradient-to-b from-cricket-gold/10 to-transparent p-5 text-center space-y-3">
+        <Trophy className="w-10 h-10 text-cricket-gold mx-auto" />
+        <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+          Match Complete
+        </div>
+        <div className="font-display font-black text-2xl text-foreground leading-tight">
+          {resultText}
+        </div>
+        {!isTied && (
+          <div className="text-sm text-muted-foreground">
+            {isTeam2Won ? team2?.name : team1?.name} wins!
+          </div>
+        )}
+      </div>
+
+      {/* Score comparison */}
+      <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
+        <div className="px-3 py-2 bg-muted/30 border-b border-border/20">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Scorecard
+          </span>
+        </div>
+        <div className="divide-y divide-border/20">
+          {/* Team 1 */}
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div>
+              <div className="font-semibold text-sm text-foreground">
+                {team1?.name ?? "Team 1"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                1st Innings · {inn1OversStr} ov · {innings1.wickets}W
+              </div>
+            </div>
+            <div className="font-score font-black text-2xl text-foreground">
+              {innings1.totalRuns}/{innings1.wickets}
+            </div>
+          </div>
+
+          {/* Team 2 */}
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div>
+              <div className="font-semibold text-sm text-foreground">
+                {team2?.name ?? "Team 2"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                2nd Innings · {inn2OversStr} ov · {innings2.wickets}W · Target{" "}
+                {target}
+              </div>
+            </div>
+            <div
+              className={cn(
+                "font-score font-black text-2xl",
+                isTeam2Won
+                  ? "text-neon-green glow-green"
+                  : isTied
+                    ? "text-cricket-gold"
+                    : "text-foreground",
+              )}
+            >
+              {innings2.totalRuns}/{innings2.wickets}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Batting summary - Team 1 */}
+      <InningsBattingSummary
+        label={`${team1?.name ?? "Team 1"} — Batting`}
+        snapshot={innings1}
+        team={team1}
+      />
+
+      {/* Batting summary - Team 2 */}
+      <InningsBattingSummary
+        label={`${team2?.name ?? "Team 2"} — Batting`}
+        snapshot={innings2}
+        team={team2}
+      />
+
+      {/* New match button */}
+      <Button
+        onClick={onNewMatch}
+        variant="outline"
+        className="w-full border-border/50 text-muted-foreground"
+        data-ocid="final_result.new_match.button"
+      >
+        Back to Matches
+      </Button>
+    </div>
+  );
+}
+
+function InningsBattingSummary({
+  label,
+  snapshot,
+  team,
+}: {
+  label: string;
+  snapshot: InningsState;
+  team: Match["teams"][0] | undefined;
+}) {
+  return (
+    <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
+      <div className="px-3 py-2 border-b border-border/20 bg-muted/30">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border/10">
+              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">
+                Batsman
+              </th>
+              <th className="text-right px-2 py-2 text-xs font-medium text-muted-foreground">
+                R
+              </th>
+              <th className="text-right px-2 py-2 text-xs font-medium text-muted-foreground">
+                B
+              </th>
+              <th className="text-right px-2 py-2 text-xs font-medium text-muted-foreground">
+                4s
+              </th>
+              <th className="text-right px-2 py-2 text-xs font-medium text-muted-foreground">
+                6s
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from(snapshot.batsmanStats.entries()).map(([id, stats]) => {
+              const player = team?.players.find((p) => Number(p.id) === id);
+              if (!player) return null;
+              return (
+                <tr
+                  key={id}
+                  className="border-b border-border/10 last:border-0"
+                >
+                  <td className="px-3 py-2 text-foreground">
+                    {player.name}
+                    {stats.isOut && stats.dismissalType && (
+                      <span className="ml-1.5 text-xs text-muted-foreground capitalize">
+                        ({stats.dismissalType})
+                      </span>
+                    )}
+                    {!stats.isOut && (
+                      <span className="ml-1 text-primary text-xs">*</span>
+                    )}
+                  </td>
+                  <td className="text-right px-2 py-2 font-mono font-bold text-foreground">
+                    {stats.runs}
+                  </td>
+                  <td className="text-right px-2 py-2 font-mono text-muted-foreground">
+                    {stats.balls}
+                  </td>
+                  <td className="text-right px-2 py-2 font-mono text-neon-green">
+                    {stats.fours}
+                  </td>
+                  <td className="text-right px-2 py-2 font-mono text-cricket-gold">
+                    {stats.sixes}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Innings Summary Screen ───────────────────────────────────────────────────
 
 interface InningsSummaryScreenProps {
@@ -623,6 +879,7 @@ interface InningsSummaryScreenProps {
   inningsNumber: 1 | 2;
   onStart2ndInnings?: () => void;
   innings1Snapshot?: InningsState | null;
+  target?: number;
 }
 
 function InningsSummaryScreen({
@@ -631,12 +888,13 @@ function InningsSummaryScreen({
   inningsNumber,
   onStart2ndInnings,
   innings1Snapshot,
+  target,
 }: InningsSummaryScreenProps) {
   const battingTeamIndex = inningsNumber === 1 ? 0 : 1;
   const battingTeam = match.teams[battingTeamIndex];
   const oversPlayed = `${snapshot.currentOver}.${snapshot.currentOverLegalBalls}`;
 
-  // Determine winner for match summary
+  // Determine winner for 2nd innings summary (non-final)
   let matchResult = "";
   if (inningsNumber === 2 && innings1Snapshot) {
     if (snapshot.totalRuns > innings1Snapshot.totalRuns) {
@@ -671,6 +929,12 @@ function InningsSummaryScreen({
             ? (snapshot.totalRuns / (snapshot.legalBalls / 6)).toFixed(2)
             : "0.00"}
         </div>
+        {inningsNumber === 1 && (
+          <div className="mt-2 px-4 py-2 rounded-xl bg-electric-blue/10 border border-electric-blue/30 text-electric-blue font-bold text-sm">
+            Target for {match.teams[1]?.name ?? "Team 2"}:{" "}
+            {snapshot.totalRuns + 1}
+          </div>
+        )}
         {inningsNumber === 2 && matchResult && (
           <div className="mt-2 px-4 py-2 rounded-xl bg-cricket-gold/10 border border-cricket-gold/30 text-cricket-gold font-bold text-sm">
             {matchResult}
@@ -679,9 +943,13 @@ function InningsSummaryScreen({
       </div>
 
       {/* Target info for 2nd innings summary */}
-      {inningsNumber === 2 && innings1Snapshot && (
+      {inningsNumber === 2 && innings1Snapshot && target && (
         <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-2.5 text-center text-sm">
-          <span className="text-muted-foreground">1st Innings: </span>
+          <span className="text-muted-foreground">Target was: </span>
+          <span className="font-mono font-bold text-electric-blue">
+            {target}
+          </span>
+          <span className="text-muted-foreground"> · 1st Innings: </span>
           <span className="font-mono font-bold text-foreground">
             {innings1Snapshot.totalRuns}/{innings1Snapshot.wickets}
           </span>
@@ -836,7 +1104,7 @@ function InningsSummaryScreen({
           data-ocid="innings_summary.start_2nd_innings.button"
         >
           <Activity className="w-5 h-5 mr-2" />
-          Start 2nd Innings
+          Start 2nd Innings — Target: {snapshot.totalRuns + 1}
         </Button>
       )}
     </div>
@@ -849,9 +1117,17 @@ interface SetupScreenProps {
   match: Match;
   onStart: (strikerId: number, nonStrikerId: number, bowlerId: number) => void;
   inningsNumber: 1 | 2;
+  target?: number;
+  maxOvers?: number;
 }
 
-function SetupScreen({ match, onStart, inningsNumber }: SetupScreenProps) {
+function SetupScreen({
+  match,
+  onStart,
+  inningsNumber,
+  target,
+  maxOvers,
+}: SetupScreenProps) {
   // For innings 1: batting=team0, bowling=team1. For innings 2: swap.
   const battingTeamIndex = inningsNumber === 1 ? 0 : 1;
   const bowlingTeamIndex = inningsNumber === 1 ? 1 : 0;
@@ -874,7 +1150,28 @@ function SetupScreen({ match, onStart, inningsNumber }: SetupScreenProps) {
         <p className="text-sm text-muted-foreground">
           {battingTeam?.name} batting · {bowlingTeam?.name} bowling
         </p>
+        {maxOvers && (
+          <p className="text-xs text-muted-foreground">
+            {maxOvers} over{maxOvers === 1 ? "" : "s"} match
+          </p>
+        )}
       </div>
+
+      {/* Target banner for 2nd innings */}
+      {inningsNumber === 2 && target !== undefined && (
+        <div className="rounded-2xl border border-electric-blue/40 bg-electric-blue/10 px-5 py-4 text-center space-y-1">
+          <div className="text-xs font-semibold uppercase tracking-wider text-electric-blue/70">
+            Target to win
+          </div>
+          <div className="font-score font-black text-5xl text-electric-blue">
+            {target}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {battingTeam?.name} needs {target} runs to win
+            {maxOvers ? ` in ${maxOvers} over${maxOvers === 1 ? "" : "s"}` : ""}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-border/50 bg-card p-4 space-y-4">
         {/* Striker */}
@@ -976,21 +1273,173 @@ export function LiveScoringPage() {
   const { isLoggedIn } = useAuth();
   const { data: match, isLoading } = useGetMatch(matchId);
 
-  const scoring = useCricketScoring();
-  const { inningsState, currentRunRate, oversString, currentOverBalls } =
-    scoring;
-
-  const [wicketDialogOpen, setWicketDialogOpen] = useState(false);
   const [inningsNumber, setInningsNumber] = useState<1 | 2>(1);
   const [innings1Snapshot, setInnings1Snapshot] = useState<InningsState | null>(
     null,
   );
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+
+  // Derived match settings
+  const maxOvers = match?.maxOvers ? Number(match.maxOvers) : undefined;
+
+  // For 2nd innings, we pass the target
+  const target =
+    inningsNumber === 2 && innings1Snapshot
+      ? innings1Snapshot.totalRuns + 1
+      : undefined;
+
+  // Total players in batting team (for all-out detection)
+  const battingTeamIndex = inningsNumber === 1 ? 0 : 1;
+  const battingTeam = match?.teams[battingTeamIndex];
+  const totalPlayers = battingTeam?.players.length;
+
+  const scoring = useCricketScoring({
+    matchId: id,
+    target,
+    maxOvers,
+    totalPlayers,
+  });
+  const {
+    inningsState,
+    currentRunRate,
+    oversString,
+    currentOverBalls,
+    requiredRuns,
+    requiredBalls,
+  } = scoring;
+
+  // ─── Session persistence ──────────────────────────────────────────────────
+
+  // Load saved session on mount (after match data is available)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scoring.dispatch is stable (useReducer dispatch)
+  useEffect(() => {
+    if (!match || sessionLoaded) return;
+    const saved = loadSession(id);
+    if (saved && saved.inningsState.status !== "not-started") {
+      setInningsNumber(saved.inningsNumber);
+      setInnings1Snapshot(saved.innings1Snapshot);
+      // Restore innings state by replaying balls
+      scoring.dispatch({ type: "RESET_INNINGS" });
+      // We need to manually restore the state. Use a ref-based approach.
+      restoredStateRef.current = saved.inningsState;
+      setNeedsRestore(true);
+    }
+    setSessionLoaded(true);
+  }, [match, sessionLoaded, id]);
+
+  const restoredStateRef = useRef<InningsState | null>(null);
+  const [needsRestore, setNeedsRestore] = useState(false);
+
+  // After RESET_INNINGS triggered by restore, replay the saved balls
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scoring.dispatch is stable (useReducer dispatch)
+  useEffect(() => {
+    if (!needsRestore || !restoredStateRef.current) return;
+    const saved = restoredStateRef.current;
+    restoredStateRef.current = null;
+    setNeedsRestore(false);
+
+    if (saved.status === "not-started") return;
+
+    // Start innings with the original players from saved balls
+    if (saved.balls.length > 0) {
+      const firstBall = saved.balls[0];
+      scoring.dispatch({
+        type: "START_INNINGS",
+        strikerId: firstBall.strikerId,
+        nonStrikerId: firstBall.nonStrikerId,
+        bowlerId: firstBall.bowlerId,
+      });
+      // Replay all balls
+      for (const ball of saved.balls) {
+        let event: BallEvent;
+        if (ball.isWicket) {
+          event = {
+            type: "WICKET",
+            dismissalType: ball.dismissalType!,
+            fielderId: ball.fielderId,
+            runs: ball.runs,
+          };
+        } else if (ball.extrasType === ExtrasType.wide) {
+          event = { type: "WIDE" };
+        } else if (ball.extrasType === ExtrasType.noball) {
+          event = { type: "NO_BALL", runs: ball.runs };
+        } else if (ball.extrasType === ExtrasType.bye) {
+          event = { type: "BYE", runs: ball.runs };
+        } else if (ball.extrasType === ExtrasType.legbye) {
+          event = { type: "LEG_BYE", runs: ball.runs };
+        } else {
+          event = { type: "RUNS", runs: ball.runs };
+        }
+        scoring.dispatch({ type: "RECORD_BALL", event });
+      }
+      // If innings was closed, close it
+      if (saved.status === "closed") {
+        scoring.dispatch({
+          type: "CLOSE_INNINGS",
+          reason: saved.autoCloseReason ?? "manual",
+        });
+      }
+    } else if (saved.strikerId !== null) {
+      // Started but no balls yet
+      scoring.dispatch({
+        type: "START_INNINGS",
+        strikerId: saved.strikerId,
+        nonStrikerId: saved.nonStrikerId!,
+        bowlerId: saved.bowlerId!,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsRestore]);
+
+  // Save session to localStorage whenever relevant state changes
+  useEffect(() => {
+    if (!sessionLoaded) return;
+    if (inningsState.status === "not-started" && !innings1Snapshot) return;
+    saveSession(id, {
+      inningsNumber,
+      innings1Snapshot,
+      inningsState,
+    });
+  }, [id, inningsNumber, innings1Snapshot, inningsState, sessionLoaded]);
+
+  // ─── Auto-close notifications ─────────────────────────────────────────────
+  const prevStatusRef = useRef(inningsState.status);
+  useEffect(() => {
+    if (
+      prevStatusRef.current !== "closed" &&
+      inningsState.status === "closed"
+    ) {
+      const reason = inningsState.autoCloseReason;
+      if (reason === "target_reached") {
+        toast.success("Target reached! Innings ended.", { icon: "🏆" });
+      } else if (reason === "overs_complete") {
+        toast("All overs complete. Innings ended.", { icon: "✅" });
+      } else if (reason === "all_out") {
+        toast.error("All out! Innings ended.", { icon: "⚡" });
+      }
+    }
+    prevStatusRef.current = inningsState.status;
+  }, [inningsState.status, inningsState.autoCloseReason]);
+
+  const [wicketDialogOpen, setWicketDialogOpen] = useState(false);
   const [endInningsDialogOpen, setEndInningsDialogOpen] = useState(false);
+  const [showFinalResult, setShowFinalResult] = useState(false);
+
+  // Show final result when 2nd innings closes
+  useEffect(() => {
+    if (
+      inningsNumber === 2 &&
+      inningsState.status === "closed" &&
+      innings1Snapshot
+    ) {
+      // Small delay for smooth UX
+      const t = setTimeout(() => setShowFinalResult(true), 500);
+      return () => clearTimeout(t);
+    }
+  }, [inningsNumber, inningsState.status, innings1Snapshot]);
 
   // Derived player lists
-  const battingTeamIndex = inningsNumber === 1 ? 0 : 1;
   const bowlingTeamIndex = inningsNumber === 1 ? 1 : 0;
-  const battingTeam = match?.teams[battingTeamIndex];
   const bowlingTeam = match?.teams[bowlingTeamIndex];
 
   // Players who haven't batted / aren't out
@@ -1030,7 +1479,7 @@ export function LiveScoringPage() {
     if (inningsNumber === 1) {
       setInnings1Snapshot({ ...scoring.inningsState });
     }
-    scoring.closeInnings();
+    scoring.closeInnings("manual");
     setEndInningsDialogOpen(false);
   }, [scoring, inningsNumber]);
 
@@ -1038,6 +1487,11 @@ export function LiveScoringPage() {
     setInningsNumber(2);
     scoring.resetInnings();
   }, [scoring]);
+
+  const handleNewMatch = useCallback(() => {
+    clearSession(id);
+    void navigate({ to: "/admin" });
+  }, [id, navigate]);
 
   const striker =
     inningsState.strikerId !== null
@@ -1134,6 +1588,11 @@ export function LiveScoringPage() {
                 LIVE
               </Badge>
             )}
+            {inningsNumber === 2 && !showFinalResult && (
+              <Badge className="bg-electric-blue/20 text-electric-blue border-electric-blue/40 text-xs">
+                2nd Inn
+              </Badge>
+            )}
           </div>
 
           <button
@@ -1151,18 +1610,22 @@ export function LiveScoringPage() {
       </div>
 
       <main className="flex-1 w-full max-w-screen-md mx-auto px-3 py-4 pb-8 space-y-3">
-        {/* Warning: ephemeral scoring */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2 border border-border/30">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-noball-orange" />
-          <span>Scoring is local. Refresh will reset scores.</span>
-        </div>
-
-        {/* Setup or Active state */}
-        {inningsState.status === "not-started" ? (
+        {/* Final Result Screen */}
+        {showFinalResult && innings1Snapshot ? (
+          <FinalResultScreen
+            match={match}
+            innings1={innings1Snapshot}
+            innings2={inningsState}
+            autoCloseReason={inningsState.autoCloseReason}
+            onNewMatch={handleNewMatch}
+          />
+        ) : inningsState.status === "not-started" ? (
           <SetupScreen
             match={match}
             onStart={scoring.startInnings}
             inningsNumber={inningsNumber}
+            target={target}
+            maxOvers={maxOvers}
           />
         ) : inningsState.status === "closed" ? (
           <InningsSummaryScreen
@@ -1173,6 +1636,7 @@ export function LiveScoringPage() {
               inningsNumber === 1 ? handleStart2ndInnings : undefined
             }
             innings1Snapshot={inningsNumber === 2 ? innings1Snapshot : null}
+            target={inningsNumber === 2 ? target : undefined}
           />
         ) : (
           <>
@@ -1184,7 +1648,10 @@ export function LiveScoringPage() {
                     {inningsState.totalRuns}/{inningsState.wickets}
                   </div>
                   <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground font-mono">
-                    <span>{oversString} ov</span>
+                    <span>
+                      {oversString}
+                      {maxOvers ? ` / ${maxOvers}` : ""} ov
+                    </span>
                     <span className="text-border">·</span>
                     <span className="text-electric-blue">
                       CRR {currentRunRate.toFixed(2)}
@@ -1207,6 +1674,33 @@ export function LiveScoringPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Target / required banner */}
+              {inningsNumber === 2 && target !== undefined && (
+                <div className="px-4 pb-2 flex items-center justify-between gap-3 text-sm">
+                  <div className="flex items-center gap-1.5 text-electric-blue font-semibold">
+                    <Target className="w-3.5 h-3.5" />
+                    Target: {target}
+                  </div>
+                  {requiredRuns !== null && requiredRuns > 0 && (
+                    <div className="text-xs text-muted-foreground font-mono">
+                      Need{" "}
+                      <span className="font-bold text-cricket-gold">
+                        {requiredRuns}
+                      </span>{" "}
+                      runs
+                      {requiredBalls !== null && requiredBalls > 0
+                        ? ` off ${requiredBalls} balls`
+                        : ""}
+                    </div>
+                  )}
+                  {requiredRuns === 0 && (
+                    <div className="text-xs text-neon-green font-bold">
+                      Target reached!
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Over progress */}
               <div className="px-4 pb-3">
@@ -1431,7 +1925,7 @@ export function LiveScoringPage() {
       </main>
 
       {/* ── Dialogs ── */}
-      {match && (
+      {match && !showFinalResult && (
         <WicketDialog
           open={wicketDialogOpen}
           onClose={() => setWicketDialogOpen(false)}

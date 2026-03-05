@@ -1,4 +1,4 @@
-import { useCallback, useReducer } from "react";
+import { useCallback, useEffect, useReducer } from "react";
 import { DismissalType, ExtrasType } from "../backend.d";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -55,6 +55,13 @@ export interface FallOfWicketLocal {
   ball: number;
 }
 
+export type AutoCloseReason =
+  | "target_reached"
+  | "overs_complete"
+  | "all_out"
+  | "manual"
+  | null;
+
 export interface InningsState {
   totalRuns: number;
   wickets: number;
@@ -80,6 +87,7 @@ export interface InningsState {
   status: "not-started" | "active" | "closed";
   pendingBowlerChange: boolean;
   pendingBatsmanChange: boolean;
+  autoCloseReason: AutoCloseReason;
 }
 
 export type BallEvent =
@@ -97,7 +105,13 @@ export type BallEvent =
   | { type: "UNDO" };
 
 export type ScoringAction =
-  | { type: "RECORD_BALL"; event: BallEvent }
+  | {
+      type: "RECORD_BALL";
+      event: BallEvent;
+      target?: number;
+      maxOvers?: number;
+      totalPlayers?: number;
+    }
   | { type: "SET_STRIKER"; playerId: number }
   | { type: "SET_NON_STRIKER"; playerId: number }
   | { type: "SET_BOWLER"; playerId: number }
@@ -109,7 +123,7 @@ export type ScoringAction =
       nonStrikerId: number;
       bowlerId: number;
     }
-  | { type: "CLOSE_INNINGS" }
+  | { type: "CLOSE_INNINGS"; reason?: AutoCloseReason }
   | { type: "RESET_INNINGS" }
   | { type: "EDIT_BALL"; index: number; ball: Partial<LocalBall> }
   | { type: "UNDO" };
@@ -142,6 +156,7 @@ function createInitialState(): InningsState {
     status: "not-started",
     pendingBowlerChange: false,
     pendingBatsmanChange: false,
+    autoCloseReason: null,
   };
 }
 
@@ -185,6 +200,78 @@ function cloneMap<K, V>(m: Map<K, V>): Map<K, V> {
   return new Map(m);
 }
 
+// ─── Serialization for localStorage ──────────────────────────────────────────
+
+function serializeState(state: InningsState): object {
+  return {
+    ...state,
+    batsmanStats: Array.from(state.batsmanStats.entries()),
+    bowlerStats: Array.from(state.bowlerStats.entries()),
+  };
+}
+
+function deserializeState(raw: Record<string, unknown>): InningsState {
+  return {
+    ...(raw as unknown as InningsState),
+    batsmanStats: new Map(
+      (raw.batsmanStats as [number, LocalBatsmanStats][]) ?? [],
+    ),
+    bowlerStats: new Map(
+      (raw.bowlerStats as [number, LocalBowlerStats][]) ?? [],
+    ),
+  };
+}
+
+export interface PersistedSession {
+  inningsNumber: 1 | 2;
+  innings1Snapshot: InningsState | null;
+  inningsState: InningsState;
+}
+
+export function saveSession(matchId: string, session: PersistedSession): void {
+  try {
+    const serialized = {
+      inningsNumber: session.inningsNumber,
+      innings1Snapshot: session.innings1Snapshot
+        ? serializeState(session.innings1Snapshot)
+        : null,
+      inningsState: serializeState(session.inningsState),
+    };
+    localStorage.setItem(`vk_cricket_${matchId}`, JSON.stringify(serialized));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function loadSession(matchId: string): PersistedSession | null {
+  try {
+    const raw = localStorage.getItem(`vk_cricket_${matchId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      inningsNumber: 1 | 2;
+      innings1Snapshot: Record<string, unknown> | null;
+      inningsState: Record<string, unknown>;
+    };
+    return {
+      inningsNumber: parsed.inningsNumber,
+      innings1Snapshot: parsed.innings1Snapshot
+        ? deserializeState(parsed.innings1Snapshot)
+        : null,
+      inningsState: deserializeState(parsed.inningsState),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function clearSession(matchId: string): void {
+  try {
+    localStorage.removeItem(`vk_cricket_${matchId}`);
+  } catch {
+    // ignore
+  }
+}
+
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 
 function scoringReducer(
@@ -225,6 +312,7 @@ function scoringReducer(
         batsmanStats,
         bowlerStats,
         currentPartnership: partnership,
+        autoCloseReason: null,
       };
     }
 
@@ -283,7 +371,11 @@ function scoringReducer(
     }
 
     case "CLOSE_INNINGS": {
-      return { ...state, status: "closed" };
+      return {
+        ...state,
+        status: "closed",
+        autoCloseReason: action.reason ?? "manual",
+      };
     }
 
     case "RESET_INNINGS": {
@@ -299,7 +391,20 @@ function scoringReducer(
       )
         return state;
 
-      return processBall(state, action.event);
+      const newState = processBall(state, action.event);
+
+      // Check auto-close conditions after ball
+      const autoClose = checkAutoClose(
+        newState,
+        action.target,
+        action.maxOvers,
+        action.totalPlayers,
+      );
+      if (autoClose) {
+        return { ...newState, status: "closed", autoCloseReason: autoClose };
+      }
+
+      return newState;
     }
 
     case "UNDO": {
@@ -316,6 +421,36 @@ function scoringReducer(
     default:
       return state;
   }
+}
+
+// ─── Auto-close check ─────────────────────────────────────────────────────────
+
+function checkAutoClose(
+  state: InningsState,
+  target?: number,
+  maxOvers?: number,
+  totalPlayers?: number,
+): AutoCloseReason {
+  // 2nd innings: team reaches or passes target
+  if (target !== undefined && target > 0 && state.totalRuns >= target) {
+    return "target_reached";
+  }
+
+  // Overs limit reached
+  if (maxOvers !== undefined && maxOvers > 0 && state.currentOver >= maxOvers) {
+    return "overs_complete";
+  }
+
+  // All out: wickets = totalPlayers - 1 (last man stands alone)
+  if (
+    totalPlayers !== undefined &&
+    totalPlayers > 1 &&
+    state.wickets >= totalPlayers - 1
+  ) {
+    return "all_out";
+  }
+
+  return null;
 }
 
 function processBall(state: InningsState, event: BallEvent): InningsState {
@@ -527,12 +662,13 @@ function processBall(state: InningsState, event: BallEvent): InningsState {
   }
 
   // Extras tally
-  let newWides = state.wides + (extrasType === ExtrasType.wide ? extraRuns : 0);
-  let newNoBalls = state.noBalls + (extrasType === ExtrasType.noball ? 1 : 0);
-  let newByes = state.byes + (extrasType === ExtrasType.bye ? extraRuns : 0);
-  let newLegByes =
+  const newWides =
+    state.wides + (extrasType === ExtrasType.wide ? extraRuns : 0);
+  const newNoBalls = state.noBalls + (extrasType === ExtrasType.noball ? 1 : 0);
+  const newByes = state.byes + (extrasType === ExtrasType.bye ? extraRuns : 0);
+  const newLegByes =
     state.legByes + (extrasType === ExtrasType.legbye ? extraRuns : 0);
-  let newExtras = state.extras + extraRuns;
+  const newExtras = state.extras + extraRuns;
 
   return {
     ...state,
@@ -670,7 +806,16 @@ function rebuildStateFromBalls(
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useCricketScoring() {
+export interface CricketScoringOptions {
+  matchId?: string;
+  target?: number; // Set for 2nd innings
+  maxOvers?: number; // Set when match has over limit
+  totalPlayers?: number; // Batting team player count
+}
+
+export function useCricketScoring(options: CricketScoringOptions = {}) {
+  const { target, maxOvers, totalPlayers } = options;
+
   const [inningsState, dispatch] = useReducer(
     scoringReducer,
     undefined,
@@ -684,9 +829,12 @@ export function useCricketScoring() {
     [],
   );
 
-  const recordBall = useCallback((event: BallEvent) => {
-    dispatch({ type: "RECORD_BALL", event });
-  }, []);
+  const recordBall = useCallback(
+    (event: BallEvent) => {
+      dispatch({ type: "RECORD_BALL", event, target, maxOvers, totalPlayers });
+    },
+    [target, maxOvers, totalPlayers],
+  );
 
   const undoLastBall = useCallback(() => {
     dispatch({ type: "UNDO" });
@@ -700,8 +848,8 @@ export function useCricketScoring() {
     dispatch({ type: "SET_NEXT_BATSMAN", playerId });
   }, []);
 
-  const closeInnings = useCallback(() => {
-    dispatch({ type: "CLOSE_INNINGS" });
+  const closeInnings = useCallback((reason?: AutoCloseReason) => {
+    dispatch({ type: "CLOSE_INNINGS", reason: reason ?? "manual" });
   }, []);
 
   const resetInnings = useCallback(() => {
@@ -728,6 +876,16 @@ export function useCricketScoring() {
     (b) => b.overNumber === inningsState.currentOver,
   );
 
+  const requiredRuns =
+    target !== undefined && target > 0
+      ? Math.max(0, target - inningsState.totalRuns)
+      : null;
+
+  const requiredBalls =
+    maxOvers !== undefined && maxOvers > 0
+      ? Math.max(0, maxOvers * 6 - inningsState.legalBalls)
+      : null;
+
   return {
     inningsState,
     startInnings,
@@ -741,6 +899,8 @@ export function useCricketScoring() {
     currentRunRate,
     oversString,
     currentOverBalls,
+    requiredRuns,
+    requiredBalls,
     dispatch,
   };
 }

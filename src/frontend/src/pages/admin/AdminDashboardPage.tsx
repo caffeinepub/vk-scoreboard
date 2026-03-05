@@ -219,8 +219,11 @@ export function AdminDashboardPage() {
         {isLoading ? (
           <div data-ocid="admin.matches.loading_state" className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders have no stable identity
-              <Skeleton key={i} className="h-36 rounded-xl shimmer" />
+              <Skeleton
+                // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders have no stable identity
+                key={i}
+                className="h-36 rounded-xl shimmer animate-pulse"
+              />
             ))}
           </div>
         ) : matches && matches.length > 0 ? (

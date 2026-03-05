@@ -276,7 +276,8 @@ export function TeamSetupPage() {
   const matchId = BigInt(id);
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
-  const { data: match, isLoading } = useGetMatch(matchId);
+  // Poll every 3s on team setup so the page picks up freshly-created match data
+  const { data: match, isLoading } = useGetMatch(matchId, 3000);
 
   if (!isLoggedIn) {
     return (
@@ -327,8 +328,8 @@ export function TeamSetupPage() {
 
         {isLoading ? (
           <div className="space-y-4">
-            <Skeleton className="h-48 rounded-2xl shimmer" />
-            <Skeleton className="h-48 rounded-2xl shimmer" />
+            <Skeleton className="h-48 rounded-2xl shimmer animate-pulse" />
+            <Skeleton className="h-48 rounded-2xl shimmer animate-pulse" />
           </div>
         ) : match ? (
           <div className="space-y-4">

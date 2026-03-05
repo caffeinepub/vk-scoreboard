@@ -1,48 +1,56 @@
 # VK Scoreboard
 
 ## Current State
-- LiveScoringPage.tsx handles ball-by-ball scoring with a ScoringButtons component
-- useCricketScoring hook manages innings state with status: "not-started" | "active" | "closed"
-- A `closeInnings()` function already exists in the hook (dispatches CLOSE_INNINGS action)
-- When status is "closed", scoring is already blocked (status !== "active" guard in reducer)
-- After innings 1, there is no UI flow to switch to innings 2 — the inningsNumber state is hardcoded to 1
-- There is no "End Innings" button or confirmation dialog
-- No innings summary screen between innings 1 and innings 2
+
+- Full innings scoring system exists (ball-by-ball via `useCricketScoring` hook, reducer-based local state)
+- Match data is stored in backend (Motoko) but **live scoring state is ephemeral** — resets on page refresh
+- Innings end only via manual "End Innings" button; no auto-end on overs/wickets/target
+- No target calculation or display for 2nd innings
+- No final result screen with winner, margin, or detailed summary
+- Match history exists via `listMatches` backend query, but **result string is never saved** after match
+- maxOvers field exists in Match model and CreateMatchPage, but is not enforced during scoring
+- No LocalStorage persistence for live scoring state
 
 ## Requested Changes (Diff)
 
 ### Add
-- "End Innings" button below the scoring buttons (visible only when innings is active)
-- Confirmation AlertDialog before ending innings (to prevent accidental taps)
-  - Show current score summary in the dialog (runs/wickets/overs)
-  - Two buttons: "Cancel" and "End Innings" (confirm)
-- After confirmation: call `scoring.closeInnings()` which sets status to "closed"
-- Innings Summary screen that appears immediately after innings 1 ends
-  - Shows first innings scorecard: total runs, wickets, overs, batsman stats, bowler stats
-  - "Start 2nd Innings" button that resets scoring state and loads innings 2 setup
-  - If innings 2 ends, show a Match Summary screen instead
-- State variable to track which innings number is active (1 or 2), replacing the hardcoded `useState<1 | 2>(1)`
-- State to store the completed first innings snapshot (totalRuns, wickets, oversString, batsmanStats, bowlerStats) so it can be shown during second innings as a target
+
+- **LocalStorage persistence**: save entire scoring session (both innings states, innings number, innings1Snapshot) to localStorage keyed by matchId; restore on page load
+- **Target system**: after 1st innings ends, auto-calculate target = team1Runs + 1; display prominently in 2nd innings score banner and setup screen
+- **Auto-end conditions for 2nd innings**:
+  - Team 2 reaches or exceeds target → auto-close innings as win
+  - All overs completed (based on match maxOvers) → auto-close innings
+  - All wickets lost (wickets === total players - 1) → auto-close innings
+- **Auto-end for 1st innings**: overs completed or all wickets lost → auto-close innings
+- **Final result screen**: shown after 2nd innings closes; displays winning team name, both scores, overs played, wickets, result text (e.g. "Team B won by 3 wickets" or "Team A won by 10 runs"); saves result to match history via backend
+- **Result save to backend**: call a new `completeMatch` endpoint (or update via `updateMatchResult`) to mark match as completed and persist result string + innings snapshots
+- **Required runs/balls display**: in live 2nd innings banner show "Need X runs off Y balls"
+- **maxOvers enforcement**: when match has maxOvers set, show over count vs limit; auto-end innings when overs reach maxOvers limit
 
 ### Modify
-- ScoringButtons component: add `onEndInnings` prop and render the "End Innings" button below Undo
-- LiveScoringPage: replace hardcoded `inningsNumber = 1` with managed state
-- When innings status is "closed" AND inningsNumber is 1: show InningsSummary component with "Start 2nd Innings" CTA
-- When innings status is "closed" AND inningsNumber is 2: show MatchSummary component
-- Scoring buttons `disabled` prop: also disable when `inningsState.status === "closed"`
-- Second innings setup: swap batting/bowling teams (team index 1 bats, team index 0 bowls)
-- Starting 2nd innings: reset the scoring hook state by calling a new `resetInnings()` action, then call `startInnings()` after setup
+
+- `useCricketScoring` hook: add target param, auto-close trigger, persist/restore from localStorage
+- `LiveScoringPage`: add target banner for 2nd innings setup screen, show target in score header, show "Need X runs" live, add final result screen component, wire auto-end effects, save result to backend
+- Remove the "Scoring is local. Refresh will reset scores." warning banner (since data will now be persisted)
+- `CreateMatchPage`: make maxOvers field with preset quick-pick buttons (5, 10, 20 overs)
 
 ### Remove
-- Nothing removed
+
+- The ephemeral-scoring warning banner in LiveScoringPage
 
 ## Implementation Plan
-1. Add "End Innings" button in ScoringButtons, wired to new `onEndInnings` prop
-2. Add EndInningsConfirmDialog (AlertDialog) in LiveScoringPage with current score summary
-3. On confirmation, call `scoring.closeInnings()`
-4. Add `inningsNumber` state (1 | 2) and `innings1Snapshot` state to LiveScoringPage
-5. Add a RESET_INNINGS action to useCricketScoring reducer that returns a fresh `not-started` state while preserving team/player context for replays
-6. After innings 1 closes: render InningsSummaryScreen with all batsman/bowler stats and a "Start 2nd Innings" button
-7. "Start 2nd Innings" button: set inningsNumber=2, call scoring dispatch RESET_INNINGS, show SetupScreen for 2nd innings
-8. After innings 2 closes: render MatchSummaryScreen showing both innings results
-9. Apply data-ocid markers to all new interactive surfaces
+
+1. Add `useMatchStorage` hook (localStorage load/save for innings session state keyed by matchId)
+2. Update `InningsState` and `useCricketScoring`:
+   - Accept `target` and `maxOvers` and `totalPlayers` params
+   - After each ball, check auto-close conditions and set `status: "closed"` automatically with a reason
+   - Expose `autoCloseReason` for UI messaging
+3. Update `LiveScoringPage`:
+   - On mount, restore from localStorage; save on every state change
+   - Pass target/maxOvers/totalPlayers to scoring hook
+   - Show target banner in 2nd innings SetupScreen
+   - Show "Need X runs off Y balls" in active score banner during 2nd innings
+   - After 2nd innings closes, render `FinalResultScreen` component (winner, scores, overs, wickets, result string)
+   - Save result to backend on match completion
+4. Update `CreateMatchPage`: add quick-pick buttons for common over counts (5, 10, 20)
+5. Remove ephemeral-scoring warning
