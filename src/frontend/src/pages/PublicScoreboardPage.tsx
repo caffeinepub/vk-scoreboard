@@ -1,13 +1,22 @@
 import type { Innings, Match, Team } from "@/backend.d";
 import { AppFooter } from "@/components/AppFooter";
 import { AppHeader } from "@/components/AppHeader";
+import { QRCodeModal } from "@/components/QRCodeModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGetMatch } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { useParams } from "@tanstack/react-router";
-import { Activity, Share2, Target, TrendingUp } from "lucide-react";
+import {
+  Activity,
+  Printer,
+  QrCode,
+  Share2,
+  Target,
+  TrendingUp,
+} from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 function getTeam(teams: Team[], id: bigint): Team | undefined {
@@ -107,12 +116,6 @@ function ScoreHeader({
             W:{innings.wides.toString()} NB:{innings.noBalls.toString()} B:
             {innings.byes.toString()} LB:{innings.legByes.toString()}
           </div>
-          {runsNeeded !== null && runsNeeded > 0 && (
-            <div className="text-xs font-semibold text-cricket-gold">
-              Need {runsNeeded} off{" "}
-              {ballsRemaining !== null ? `${ballsRemaining} balls` : "..."}
-            </div>
-          )}
           {runsNeeded === 0 && (
             <div className="text-xs font-semibold text-neon-green">
               Target reached!
@@ -121,6 +124,37 @@ function ScoreHeader({
           {rrq && <div className="text-xs text-electric-blue">RRQ: {rrq}</div>}
         </div>
       </div>
+
+      {/* Prominent chase banner — full width below the score */}
+      {runsNeeded !== null && runsNeeded > 0 && (
+        <div className="mx-0 px-4 py-3 border-t border-cricket-gold/30 bg-cricket-gold/10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-cricket-gold shrink-0" />
+            <span className="text-cricket-gold font-bold text-base leading-tight">
+              Need{" "}
+              <span className="text-2xl font-black tabular-nums">
+                {runsNeeded}
+              </span>{" "}
+              runs
+              {ballsRemaining !== null && ballsRemaining > 0 && (
+                <>
+                  {" "}
+                  from{" "}
+                  <span className="text-2xl font-black tabular-nums">
+                    {ballsRemaining}
+                  </span>{" "}
+                  ball{ballsRemaining === 1 ? "" : "s"}
+                </>
+              )}
+            </span>
+          </div>
+          {rrq && (
+            <div className="text-xs text-muted-foreground font-mono shrink-0">
+              RRQ: {rrq}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -183,6 +217,7 @@ export function PublicScoreboardPage() {
 
   // Poll every 3000ms when match is live
   const { data: match, isLoading, isError } = useGetMatch(matchId, 3_000);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const handleShare = () => {
     const link = `${window.location.origin}/match/${id}`;
@@ -281,6 +316,26 @@ export function PublicScoreboardPage() {
             <Button
               variant="outline"
               size="sm"
+              className="h-8 px-2 border-border/60 text-muted-foreground hover:text-foreground"
+              onClick={() => setQrOpen(true)}
+              data-ocid="scoreboard.qr.button"
+              title="QR Code"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2 border-border/60 text-muted-foreground hover:text-foreground"
+              onClick={() => window.print()}
+              data-ocid="scoreboard.print.button"
+              title="Print / Export PDF"
+            >
+              <Printer className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               className="h-8 px-3 border-border/60 text-muted-foreground hover:text-foreground gap-1.5"
               onClick={handleShare}
               data-ocid="scoreboard.share.button"
@@ -291,16 +346,28 @@ export function PublicScoreboardPage() {
           </div>
         </div>
 
-        {/* Live indicator */}
+        {/* Live indicator + Share */}
         {isLive && (
-          <div
-            className={cn(
-              "flex items-center gap-2 text-xs font-medium rounded-lg px-3 py-2",
-              "bg-wicket-red/10 border border-wicket-red/20 text-wicket-red/80",
-            )}
-          >
-            <span className="w-2 h-2 rounded-full bg-wicket-red live-pulse inline-block" />
-            LIVE — Updates every few seconds
+          <div className="flex items-center gap-2">
+            <div
+              className={cn(
+                "flex-1 flex items-center gap-2 text-xs font-medium rounded-lg px-3 py-2",
+                "bg-wicket-red/10 border border-wicket-red/20 text-wicket-red/80",
+              )}
+            >
+              <span className="w-2 h-2 rounded-full bg-wicket-red live-pulse inline-block" />
+              LIVE — Updates every few seconds
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-4 border-primary/40 text-primary hover:bg-primary/10 gap-1.5 font-semibold shrink-0"
+              onClick={handleShare}
+              data-ocid="scoreboard.share_live.button"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              Share Live
+            </Button>
           </div>
         )}
 
@@ -406,6 +473,12 @@ export function PublicScoreboardPage() {
       </main>
 
       <AppFooter />
+
+      <QRCodeModal
+        url={`${typeof window !== "undefined" ? window.location.origin : ""}/match/${id}`}
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+      />
     </div>
   );
 }

@@ -624,9 +624,27 @@ function processBall(state: InningsState, event: BallEvent): InningsState {
 
   if (isWicket) {
     newStrikerId = null; // needs replacement
-  } else if (extrasType !== ExtrasType.wide) {
-    // Rotate on odd runs
-    if (totalRunsScored % 2 !== 0) {
+  } else {
+    // Determine runs that actually cause batsmen to physically change ends.
+    // Penalty extras (wide +1, no-ball +1) do NOT count for rotation.
+    let runsForRotation = 0;
+    if (extrasType === ExtrasType.none) {
+      // Normal delivery — batsman runs
+      runsForRotation = runs;
+    } else if (
+      extrasType === ExtrasType.bye ||
+      extrasType === ExtrasType.legbye
+    ) {
+      // Bye / leg-bye — batsmen ran, use extraRuns (the physical runs completed)
+      runsForRotation = extraRuns;
+    } else if (extrasType === ExtrasType.wide) {
+      // Wide — no physical run by batsmen (penalty only); no rotation
+      runsForRotation = 0;
+    } else if (extrasType === ExtrasType.noball) {
+      // No-ball — rotate only on batsman's actual runs, not the penalty +1
+      runsForRotation = runs;
+    }
+    if (runsForRotation % 2 !== 0) {
       newStrikerId = nonStrikerId;
       newNonStrikerId = strikerId;
     }

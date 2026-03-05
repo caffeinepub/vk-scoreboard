@@ -245,7 +245,7 @@ function MatchCard({
         <button
           type="button"
           data-ocid={`matches.delete_button.${index}`}
-          className="absolute top-3 right-3 z-10 w-7 h-7 flex items-center justify-center rounded-lg border border-destructive/30 bg-destructive/10 text-destructive/60 hover:text-destructive hover:bg-destructive/20 hover:border-destructive/50 transition-all opacity-0 group-hover:opacity-100"
+          className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-lg border border-destructive/40 bg-destructive/15 text-destructive/70 hover:text-destructive hover:bg-destructive/25 hover:border-destructive/60 transition-all active:scale-95"
           onClick={(e) => {
             e.stopPropagation();
             onDeleteRequest(match.id);

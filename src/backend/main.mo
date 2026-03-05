@@ -6,11 +6,11 @@ import Nat "mo:core/Nat";
 import Runtime "mo:core/Runtime";
 import Time "mo:core/Time";
 import Principal "mo:core/Principal";
-import Migration "migration";
+
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 
-(with migration = Migration.run)
+
 actor {
   // Initialize the access control system
   let accessControlState = AccessControl.initState();
@@ -230,10 +230,10 @@ actor {
     };
   };
 
-  // Delete Match - Admin only due to destructive nature
+  // Delete Match - User only
   public shared ({ caller }) func deleteMatch(matchId : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can delete matches");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can delete matches");
     };
     switch (matches.get(matchId)) {
       case (null) { Runtime.trap("Match not found") };

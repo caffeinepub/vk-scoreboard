@@ -1,11 +1,21 @@
 import type { Match } from "@/backend.d";
 import { AppFooter } from "@/components/AppFooter";
 import { AppHeader } from "@/components/AppHeader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
-import { useListMatches } from "@/hooks/useQueries";
+import { useDeleteMatch, useListMatches } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -15,9 +25,33 @@ import {
   Plus,
   Settings,
   Target,
+  Trash2,
+  Trophy,
   Users,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+
+const DELETED_MATCHES_KEY = "vk_deleted_matches";
+
+function getDeletedMatchIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_MATCHES_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function addDeletedMatchId(id: string): void {
+  try {
+    const existing = getDeletedMatchIds();
+    existing.add(id);
+    localStorage.setItem(DELETED_MATCHES_KEY, JSON.stringify([...existing]));
+  } catch {
+    // ignore
+  }
+}
 
 function StatusBadge({ status }: { status: Match["status"] }) {
   if (status === "live") {
@@ -45,7 +79,17 @@ function StatusBadge({ status }: { status: Match["status"] }) {
   );
 }
 
-function AdminMatchCard({ match, index }: { match: Match; index: number }) {
+interface AdminMatchCardProps {
+  match: Match;
+  index: number;
+  onDeleteRequest: (matchId: bigint) => void;
+}
+
+function AdminMatchCard({
+  match,
+  index,
+  onDeleteRequest,
+}: AdminMatchCardProps) {
   const navigate = useNavigate();
 
   return (
@@ -81,7 +125,19 @@ function AdminMatchCard({ match, index }: { match: Match; index: number }) {
             )}
           </div>
         </div>
-        <StatusBadge status={match.status} />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={match.status} />
+          {/* Delete button */}
+          <button
+            type="button"
+            data-ocid={`admin.matches.delete_button.${index}`}
+            className="w-7 h-7 flex items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 text-destructive/60 hover:text-destructive hover:bg-destructive/20 hover:border-destructive/60 transition-all active:scale-95"
+            onClick={() => onDeleteRequest(match.id)}
+            title="Delete match"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Teams */}
@@ -178,7 +234,12 @@ function AdminMatchCard({ match, index }: { match: Match; index: number }) {
 export function AdminDashboardPage() {
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
-  const { data: matches, isLoading } = useListMatches();
+  const { data: matches, isLoading, refetch } = useListMatches();
+  const deleteMatch = useDeleteMatch();
+
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(getDeletedMatchIds);
+  const [deleteTargetId, setDeleteTargetId] = useState<bigint | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -188,13 +249,47 @@ export function AdminDashboardPage() {
 
   if (!isLoggedIn) return null;
 
+  const handleDeleteRequest = (matchId: bigint) => {
+    setDeleteTargetId(matchId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteTargetId === null) return;
+    const idStr = deleteTargetId.toString();
+    addDeletedMatchId(idStr);
+    setDeletedIds((prev) => {
+      const next = new Set(prev);
+      next.add(idStr);
+      return next;
+    });
+    deleteMatch.mutate(
+      { matchId: deleteTargetId },
+      {
+        onSettled: () => {
+          void refetch();
+        },
+      },
+    );
+    setDeleteDialogOpen(false);
+    setDeleteTargetId(null);
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setDeleteTargetId(null);
+  };
+
+  const visibleMatches =
+    matches?.filter((m) => !deletedIds.has(m.id.toString())) ?? [];
+
   return (
     <div className="min-h-screen flex flex-col pitch-bg pitch-texture">
       <AppHeader showAdminControls />
 
       <main className="flex-1 w-full max-w-screen-lg mx-auto px-4 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="flex items-center justify-between gap-4 mb-4">
           <div>
             <h1 className="font-display font-black text-2xl text-foreground">
               Admin Dashboard
@@ -215,6 +310,34 @@ export function AdminDashboardPage() {
           </Button>
         </div>
 
+        {/* Quick links */}
+        <div className="flex gap-2 mb-6 flex-wrap">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="border-border/50 text-muted-foreground hover:text-foreground"
+            data-ocid="admin.tournaments.link"
+          >
+            <Link to="/admin/tournaments">
+              <Trophy className="w-3.5 h-3.5 mr-1.5" />
+              Tournaments
+            </Link>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="border-border/50 text-muted-foreground hover:text-foreground"
+            data-ocid="admin.players.link"
+          >
+            <Link to="/admin/players">
+              <Users className="w-3.5 h-3.5 mr-1.5" />
+              Player Profiles
+            </Link>
+          </Button>
+        </div>
+
         {/* Match list */}
         {isLoading ? (
           <div data-ocid="admin.matches.loading_state" className="space-y-3">
@@ -226,13 +349,14 @@ export function AdminDashboardPage() {
               />
             ))}
           </div>
-        ) : matches && matches.length > 0 ? (
+        ) : visibleMatches.length > 0 ? (
           <div className="space-y-3">
-            {matches.map((match, i) => (
+            {visibleMatches.map((match, i) => (
               <AdminMatchCard
                 key={match.id.toString()}
                 match={match}
                 index={i + 1}
+                onDeleteRequest={handleDeleteRequest}
               />
             ))}
           </div>
@@ -265,6 +389,43 @@ export function AdminDashboardPage() {
       </main>
 
       <AppFooter />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(o) => !o && handleDeleteCancel()}
+      >
+        <AlertDialogContent
+          className="bg-card border-border max-w-sm"
+          data-ocid="admin.delete.dialog"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Delete this match?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              This match will be permanently removed. This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              data-ocid="admin.delete.cancel_button"
+              onClick={handleDeleteCancel}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="admin.delete.confirm_button"
+              onClick={handleDeleteConfirm}
+              className="bg-destructive/20 text-destructive border border-destructive/40 hover:bg-destructive/30"
+            >
+              Delete Match
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

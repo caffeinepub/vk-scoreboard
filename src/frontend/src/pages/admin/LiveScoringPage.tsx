@@ -2,6 +2,8 @@ import type { Match, Player } from "@/backend.d";
 import { AppFooter } from "@/components/AppFooter";
 import { AppHeader } from "@/components/AppHeader";
 import { BallPill } from "@/components/BallPill";
+import { QRCodeModal } from "@/components/QRCodeModal";
+import { ScoreGraph } from "@/components/ScoreGraph";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +36,7 @@ import type { BallEvent } from "@/hooks/useCricketScoring";
 import {
   type AutoCloseReason,
   type InningsState,
+  type LocalBall,
   clearSession,
   loadSession,
   saveSession,
@@ -52,6 +55,8 @@ import {
   ChevronLeft,
   Edit2,
   Loader2,
+  Printer,
+  QrCode,
   RefreshCw,
   RotateCcw,
   Share2,
@@ -62,6 +67,47 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
+// ─── Commentary ───────────────────────────────────────────────────────────────
+
+const fourCommentary = [
+  "FOUR! Races away to the boundary!",
+  "FOUR! Excellent shot through the covers!",
+  "FOUR! Punched through mid-off with authority!",
+  "FOUR! Driven beautifully down the ground!",
+];
+const sixCommentary = [
+  "SIX! That's gone all the way!",
+  "SIX! Massive hit into the stands!",
+  "SIX! What a clean strike!",
+  "SIX! The crowd erupts!",
+];
+const wicketCommentary = [
+  "WICKET! Back in the pavilion!",
+  "OUT! The stumps are shattered!",
+  "GONE! Brilliant dismissal!",
+  "WICKET! What a moment!",
+];
+const dotCommentary = [
+  "Dot ball. Pressure builds.",
+  "Good length delivery, no run.",
+  "Defended solidly.",
+  "Tight bowling, dot ball.",
+];
+
+function getCommentary(
+  type: "four" | "six" | "wicket" | "dot" | "wide" | "noball",
+): string {
+  const pick = (arr: string[]) =>
+    arr[Math.floor(Math.random() * arr.length)] ?? arr[0] ?? "";
+  if (type === "four") return pick(fourCommentary);
+  if (type === "six") return pick(sixCommentary);
+  if (type === "wicket") return pick(wicketCommentary);
+  if (type === "dot") return pick(dotCommentary);
+  if (type === "wide") return "Wide! Extra run added.";
+  if (type === "noball") return "No Ball! Free Hit coming up! ⚡";
+  return "";
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -686,6 +732,72 @@ function buildResultText(
   return `${t1Name} won by ${runMargin} run${runMargin === 1 ? "" : "s"}`;
 }
 
+function selectPlayerOfMatch(
+  innings1: InningsState,
+  innings2: InningsState,
+  match: Match,
+): { name: string; reason: string } | null {
+  // Combine stats from both innings
+  const playerScores = new Map<
+    number,
+    { runs: number; balls: number; wickets: number }
+  >();
+
+  const addStats = (state: InningsState) => {
+    for (const [id, stats] of state.batsmanStats) {
+      const existing = playerScores.get(id) ?? {
+        runs: 0,
+        balls: 0,
+        wickets: 0,
+      };
+      existing.runs += stats.runs;
+      existing.balls += stats.balls;
+      playerScores.set(id, existing);
+    }
+    for (const [id, stats] of state.bowlerStats) {
+      const existing = playerScores.get(id) ?? {
+        runs: 0,
+        balls: 0,
+        wickets: 0,
+      };
+      existing.wickets += stats.wickets;
+      playerScores.set(id, existing);
+    }
+  };
+
+  addStats(innings1);
+  addStats(innings2);
+
+  if (playerScores.size === 0) return null;
+
+  // Score = runs + wickets * 20
+  let bestId = -1;
+  let bestScore = -1;
+  for (const [id, s] of playerScores) {
+    const score = s.runs + s.wickets * 20;
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = id;
+    }
+  }
+
+  if (bestId === -1) return null;
+
+  const player = getPlayer(match, bestId);
+  if (!player) return null;
+
+  const stats = playerScores.get(bestId)!;
+  const parts: string[] = [];
+  if (stats.runs > 0) parts.push(`${stats.runs}R (${stats.balls}B)`);
+  if (stats.wickets > 0)
+    parts.push(`${stats.wickets} wicket${stats.wickets !== 1 ? "s" : ""}`);
+
+  return {
+    name: player.name,
+    reason: parts.join(" + ") || "Outstanding performance",
+  };
+}
+
 function FinalResultScreen({
   match,
   innings1,
@@ -716,6 +828,58 @@ function FinalResultScreen({
   const isTied =
     innings2.totalRuns === innings1.totalRuns &&
     autoCloseReason !== "target_reached";
+
+  const potm = selectPlayerOfMatch(innings1, innings2, match);
+
+  // Match highlights
+  const allBalls = [...innings1.balls, ...innings2.balls];
+  const totalFours = allBalls.filter((b) => b.runs === 4 && !b.isWicket).length;
+  const totalSixes = allBalls.filter((b) => b.runs === 6 && !b.isWicket).length;
+
+  // Best batsman (all innings combined)
+  let bestBatsmanName = "-";
+  let bestBatsmanRuns = 0;
+  let bestBatsmanBalls = 0;
+  let bestBatsmanOut = false;
+  for (const innings of [innings1, innings2]) {
+    const battingTeamIdx = innings === innings1 ? 0 : 1;
+    const battingTeam = match.teams[battingTeamIdx];
+    for (const [id, stats] of innings.batsmanStats) {
+      if (stats.runs > bestBatsmanRuns) {
+        const p = battingTeam?.players.find((pl) => Number(pl.id) === id);
+        if (p) {
+          bestBatsmanName = p.name;
+          bestBatsmanRuns = stats.runs;
+          bestBatsmanBalls = stats.balls;
+          bestBatsmanOut = stats.isOut;
+        }
+      }
+    }
+  }
+
+  // Best bowler
+  let bestBowlerName = "-";
+  let bestBowlerW = 0;
+  let bestBowlerR = 0;
+  let bestBowlerOvers = "0";
+  for (const innings of [innings1, innings2]) {
+    const bowlingTeamIdx = innings === innings1 ? 1 : 0;
+    const bowlingTeam = match.teams[bowlingTeamIdx];
+    for (const [id, stats] of innings.bowlerStats) {
+      if (
+        stats.wickets > bestBowlerW ||
+        (stats.wickets === bestBowlerW && stats.runs < bestBowlerR)
+      ) {
+        const p = bowlingTeam?.players.find((pl) => Number(pl.id) === id);
+        if (p) {
+          bestBowlerName = p.name;
+          bestBowlerW = stats.wickets;
+          bestBowlerR = stats.runs;
+          bestBowlerOvers = `${stats.overs}.${stats.ballsThisOver}`;
+        }
+      }
+    }
+  }
 
   return (
     <div className="space-y-4 animate-fade-in" data-ocid="final_result.panel">
@@ -799,8 +963,70 @@ function FinalResultScreen({
         team={team2}
       />
 
+      {/* Player of the Match */}
+      {potm && (
+        <div
+          className="rounded-2xl border border-cricket-gold/50 bg-gradient-to-b from-cricket-gold/15 to-transparent p-5 text-center space-y-2"
+          data-ocid="final_result.potm.card"
+        >
+          <div className="text-xs font-semibold uppercase tracking-widest text-cricket-gold/70">
+            🏆 Player of the Match
+          </div>
+          <div className="font-display font-black text-xl text-cricket-gold">
+            {potm.name}
+          </div>
+          <div className="text-sm text-muted-foreground">{potm.reason}</div>
+        </div>
+      )}
+
+      {/* Match Highlights */}
+      <div
+        className="rounded-xl border border-electric-blue/30 bg-electric-blue/5 p-4 space-y-2"
+        data-ocid="final_result.highlights.panel"
+      >
+        <div className="text-xs font-semibold uppercase tracking-wider text-electric-blue/80 mb-3">
+          ⚡ Match Highlights
+        </div>
+        <div className="space-y-1.5 text-sm">
+          {bestBatsmanRuns > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">• Highest Scorer:</span>
+              <span className="font-semibold text-foreground">
+                {bestBatsmanName} — {bestBatsmanRuns}
+                {bestBatsmanOut ? "" : "*"} ({bestBatsmanBalls}b)
+              </span>
+            </div>
+          )}
+          {bestBowlerW > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">• Best Bowler:</span>
+              <span className="font-semibold text-foreground">
+                {bestBowlerName} — {bestBowlerW}/{bestBowlerR} in{" "}
+                {bestBowlerOvers} ov
+              </span>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">• Total Fours:</span>
+            <span className="font-mono font-bold text-neon-green">
+              {totalFours}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">• Total Sixes:</span>
+            <span className="font-mono font-bold text-cricket-gold">
+              {totalSixes}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">• Result:</span>
+            <span className="font-semibold text-foreground">{resultText}</span>
+          </div>
+        </div>
+      </div>
+
       {/* Action buttons */}
-      <div className="flex gap-3">
+      <div className="flex gap-3 no-print">
         <Button
           onClick={onRematch}
           disabled={isRematching}
@@ -813,6 +1039,15 @@ function FinalResultScreen({
             <RefreshCw className="w-4 h-4 mr-2" />
           )}
           {isRematching ? "Creating..." : "Rematch"}
+        </Button>
+        <Button
+          onClick={() => window.print()}
+          variant="outline"
+          className="border-border/50 text-muted-foreground hover:text-foreground"
+          data-ocid="final_result.print.button"
+          title="Export / Print Scorecard"
+        >
+          <Printer className="w-4 h-4" />
         </Button>
         <Button
           onClick={onNewMatch}
@@ -1146,6 +1381,162 @@ function InningsSummaryScreen({
   );
 }
 
+// ─── Ball by Ball History ─────────────────────────────────────────────────────
+
+function BallByBallHistory({ balls }: { balls: LocalBall[] }) {
+  if (balls.length === 0) return null;
+
+  // Group balls by overNumber
+  const overGroups = new Map<number, LocalBall[]>();
+  for (const ball of balls) {
+    const existing = overGroups.get(ball.overNumber) ?? [];
+    overGroups.set(ball.overNumber, [...existing, ball]);
+  }
+
+  // Sort by over number ascending
+  const sortedOvers = Array.from(overGroups.entries()).sort(
+    ([a], [b]) => a - b,
+  );
+
+  return (
+    <div className="rounded-xl border border-border/30 bg-muted/20 px-4 py-3">
+      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+        Ball by Ball
+      </div>
+      <div className="space-y-3">
+        {sortedOvers.map(([overNum, overBalls]) => (
+          <div key={overNum}>
+            <div className="text-xs text-muted-foreground/70 mb-1.5 font-mono">
+              Over {overNum + 1}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {overBalls.map((b) => (
+                <BallPill key={b.totalBallIndex} ball={b} size="sm" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Toss Screen ──────────────────────────────────────────────────────────────
+
+interface TossScreenProps {
+  match: Match;
+  onTossComplete: (battingTeamIndex: 0 | 1) => void;
+}
+
+function TossScreen({ match, onTossComplete }: TossScreenProps) {
+  const team1 = match.teams[0];
+  const team2 = match.teams[1];
+  const [isFlipping, setIsFlipping] = useState(false);
+  const [tossResult, setTossResult] = useState<"Heads" | "Tails" | null>(null);
+  const [winningTeamIndex, setWinningTeamIndex] = useState<0 | 1 | null>(null);
+
+  const flipCoin = () => {
+    if (isFlipping) return;
+    setIsFlipping(true);
+    setTossResult(null);
+    setWinningTeamIndex(null);
+
+    setTimeout(() => {
+      const result = Math.random() < 0.5 ? "Heads" : "Tails";
+      const winner = Math.random() < 0.5 ? 0 : 1;
+      setTossResult(result);
+      setWinningTeamIndex(winner as 0 | 1);
+      setIsFlipping(false);
+    }, 1600);
+  };
+
+  const winningTeam =
+    winningTeamIndex !== null ? (winningTeamIndex === 0 ? team1 : team2) : null;
+
+  return (
+    <div className="space-y-5 animate-fade-in" data-ocid="toss.panel">
+      <div className="text-center space-y-1">
+        <h2 className="font-display font-bold text-xl text-foreground">
+          🪙 Toss
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {team1?.name ?? "Team 1"} vs {team2?.name ?? "Team 2"}
+        </p>
+      </div>
+
+      {/* Coin */}
+      <div className="flex justify-center py-4">
+        <div
+          className={cn(
+            "w-24 h-24 rounded-full border-4 border-cricket-gold bg-cricket-gold/20 flex items-center justify-center font-display font-black text-3xl text-cricket-gold",
+            isFlipping && "coin-flip",
+          )}
+        >
+          {isFlipping
+            ? "🪙"
+            : tossResult === "Heads"
+              ? "H"
+              : tossResult === "Tails"
+                ? "T"
+                : "🪙"}
+        </div>
+      </div>
+
+      {/* Flip button */}
+      {!tossResult && (
+        <Button
+          onClick={flipCoin}
+          disabled={isFlipping}
+          className="w-full h-14 bg-cricket-gold/20 text-cricket-gold border border-cricket-gold/50 hover:bg-cricket-gold/30 font-bold text-lg box-glow-gold"
+          data-ocid="toss.flip.button"
+        >
+          {isFlipping ? "Flipping..." : "🪙 Flip Coin"}
+        </Button>
+      )}
+
+      {/* Result */}
+      {tossResult && winningTeamIndex !== null && winningTeam && (
+        <div className="space-y-4 animate-fade-in">
+          <div className="rounded-2xl border border-cricket-gold/40 bg-cricket-gold/10 p-4 text-center space-y-1">
+            <div className="text-lg font-bold text-cricket-gold">
+              {tossResult}! {winningTeam.name} wins the toss.
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Choose to bat or bowl first:
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => onTossComplete(winningTeamIndex)}
+              className="h-14 rounded-xl border border-neon-green/50 bg-neon-green/15 text-neon-green hover:bg-neon-green/25 font-bold text-base transition-all active:scale-95 box-glow-green"
+              data-ocid="toss.bat.button"
+            >
+              🏏 Bat
+            </button>
+            <button
+              type="button"
+              onClick={() => onTossComplete(winningTeamIndex === 0 ? 1 : 0)}
+              className="h-14 rounded-xl border border-electric-blue/50 bg-electric-blue/15 text-electric-blue hover:bg-electric-blue/25 font-bold text-base transition-all active:scale-95 box-glow-blue"
+              data-ocid="toss.bowl.button"
+            >
+              🎯 Bowl
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={flipCoin}
+            className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+            data-ocid="toss.reflip.button"
+          >
+            ↩ Redo toss
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Setup Screen ─────────────────────────────────────────────────────────────
 
 interface SetupScreenProps {
@@ -1154,6 +1545,7 @@ interface SetupScreenProps {
   inningsNumber: 1 | 2;
   target?: number;
   maxOvers?: number;
+  battingTeamIndex?: 0 | 1;
 }
 
 function SetupScreen({
@@ -1162,10 +1554,16 @@ function SetupScreen({
   inningsNumber,
   target,
   maxOvers,
+  battingTeamIndex: propBattingTeamIndex,
 }: SetupScreenProps) {
-  // For innings 1: batting=team0, bowling=team1. For innings 2: swap.
-  const battingTeamIndex = inningsNumber === 1 ? 0 : 1;
-  const bowlingTeamIndex = inningsNumber === 1 ? 1 : 0;
+  // For innings 1: use toss result or default 0. For innings 2: swap.
+  const battingTeamIndex =
+    inningsNumber === 1
+      ? (propBattingTeamIndex ?? 0)
+      : propBattingTeamIndex === 0
+        ? 1
+        : 0;
+  const bowlingTeamIndex = battingTeamIndex === 0 ? 1 : 0;
   const battingTeam = match.teams[battingTeamIndex];
   const bowlingTeam = match.teams[bowlingTeamIndex];
 
@@ -1314,6 +1712,13 @@ export function LiveScoringPage() {
   );
   const [sessionLoaded, setSessionLoaded] = useState(false);
 
+  // Toss state
+  const [tossCompleted, setTossCompleted] = useState(false);
+  const [tossBattingTeamIndex, setTossBattingTeamIndex] = useState<0 | 1>(0);
+
+  // QR modal state
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+
   // Derived match settings
   const maxOvers = match?.maxOvers ? Number(match.maxOvers) : undefined;
 
@@ -1364,6 +1769,7 @@ export function LiveScoringPage() {
 
   const restoredStateRef = useRef<InningsState | null>(null);
   const [needsRestore, setNeedsRestore] = useState(false);
+  const lastSyncRef = useRef<number>(0);
 
   // After RESET_INNINGS triggered by restore, replay the saved balls
   // biome-ignore lint/correctness/useExhaustiveDependencies: scoring.dispatch is stable (useReducer dispatch)
@@ -1437,6 +1843,33 @@ export function LiveScoringPage() {
     });
   }, [id, inningsNumber, innings1Snapshot, inningsState, sessionLoaded]);
 
+  // ─── Over Summary Toast ────────────────────────────────────────────────────
+  const prevOverRef = useRef(inningsState.currentOver);
+  useEffect(() => {
+    if (
+      inningsState.currentOver > prevOverRef.current &&
+      inningsState.currentOver > 0
+    ) {
+      const completedOverNum = inningsState.currentOver - 1;
+      const overBalls = inningsState.balls.filter(
+        (b) => b.overNumber === completedOverNum,
+      );
+      const summary = overBalls
+        .map((b) => {
+          if (b.isWicket) return "W";
+          if (b.extrasType === "wide") return "Wd";
+          if (b.extrasType === "noball") return "Nb";
+          return b.runs.toString();
+        })
+        .join(" · ");
+      toast(`Over ${inningsState.currentOver} complete: ${summary}`, {
+        duration: 4000,
+        icon: "🏏",
+      });
+    }
+    prevOverRef.current = inningsState.currentOver;
+  }, [inningsState.currentOver, inningsState.balls]);
+
   // ─── Auto-close notifications & backend save ──────────────────────────────
   const prevStatusRef = useRef(inningsState.status);
   // biome-ignore lint/correctness/useExhaustiveDependencies: inningsState reference intentional — we only want to fire on status change
@@ -1452,6 +1885,11 @@ export function LiveScoringPage() {
         toast("All overs complete. Innings ended.", { icon: "✅" });
       } else if (reason === "all_out") {
         toast.error("All out! Innings ended.", { icon: "⚡" });
+      }
+
+      // Capture innings1Snapshot when innings 1 auto-closes (not set by handleEndInnings)
+      if (inningsNumber === 1 && reason !== "manual") {
+        setInnings1Snapshot({ ...inningsState });
       }
 
       // Fire-and-forget: save innings result to backend after auto-close
@@ -1501,6 +1939,43 @@ export function LiveScoringPage() {
   const rematchMutation = useRematch();
   const saveInningsResult = useSaveInningsResult();
 
+  // ─── Live sync: push innings data to backend on every ball (throttled) ──────
+  // This ensures viewers on the public scoreboard see live score updates.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — fires on every ball
+  useEffect(() => {
+    if (!match || !sessionLoaded) return;
+    if (inningsState.status !== "active") return;
+    if (inningsState.balls.length === 0) return;
+
+    const now = Date.now();
+    if (now - lastSyncRef.current < 5000) return; // throttle: max once per 5s
+    lastSyncRef.current = now;
+
+    const snap = inningsState;
+    const team0Id = match.teams[0]?.id ?? 0n;
+    const team1Id = match.teams[1]?.id ?? 0n;
+    const battingTeamId = inningsNumber === 1 ? team0Id : team1Id;
+    const bowlingTeamId = inningsNumber === 1 ? team1Id : team0Id;
+
+    void saveInningsResult
+      .mutateAsync({
+        matchId,
+        isFirstInnings: inningsNumber === 1,
+        battingTeamId,
+        bowlingTeamId,
+        totalRuns: BigInt(snap.totalRuns),
+        wickets: BigInt(snap.wickets),
+        legalBalls: BigInt(snap.legalBalls),
+        wides: BigInt(snap.wides),
+        noBalls: BigInt(snap.noBalls),
+        byes: BigInt(snap.byes),
+        legByes: BigInt(snap.legByes),
+        result: null,
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inningsState.balls.length, inningsState.status]);
+
   // Show final result when 2nd innings closes
   useEffect(() => {
     if (
@@ -1532,7 +2007,7 @@ export function LiveScoringPage() {
     (dismissalType: DismissalType, fielderId?: number, runs?: number) => {
       scoring.recordBall({ type: "WICKET", dismissalType, fielderId, runs });
       setWicketDialogOpen(false);
-      toast.error("Wicket! Select next batsman", { icon: "⚡" });
+      toast.error(getCommentary("wicket"), { icon: "⚡" });
     },
     [scoring],
   );
@@ -1617,16 +2092,16 @@ export function LiveScoringPage() {
   }, [rematchMutation, matchId, id, navigate]);
 
   const striker =
-    inningsState.strikerId !== null
-      ? getPlayer(match!, inningsState.strikerId)
+    inningsState.strikerId !== null && match
+      ? getPlayer(match, inningsState.strikerId)
       : undefined;
   const nonStriker =
-    inningsState.nonStrikerId !== null
-      ? getPlayer(match!, inningsState.nonStrikerId)
+    inningsState.nonStrikerId !== null && match
+      ? getPlayer(match, inningsState.nonStrikerId)
       : undefined;
   const currentBowler =
-    inningsState.bowlerId !== null
-      ? getPlayer(match!, inningsState.bowlerId)
+    inningsState.bowlerId !== null && match
+      ? getPlayer(match, inningsState.bowlerId)
       : undefined;
 
   const strikerStats =
@@ -1736,6 +2211,15 @@ export function LiveScoringPage() {
             </button>
             <button
               type="button"
+              onClick={() => setQrModalOpen(true)}
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors p-1"
+              data-ocid="scoring.qr.button"
+              title="QR Code for live score"
+            >
+              <QrCode className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
               onClick={() =>
                 void navigate({
                   to: "/admin/match/$id/correct",
@@ -1765,6 +2249,17 @@ export function LiveScoringPage() {
             onRematch={handleRematch}
             isRematching={isRematching}
           />
+        ) : inningsState.status === "not-started" &&
+          inningsNumber === 1 &&
+          !tossCompleted ? (
+          /* Toss Screen before 1st innings setup */
+          <TossScreen
+            match={match}
+            onTossComplete={(battingIdx) => {
+              setTossBattingTeamIndex(battingIdx);
+              setTossCompleted(true);
+            }}
+          />
         ) : inningsState.status === "not-started" ? (
           <SetupScreen
             match={match}
@@ -1772,6 +2267,13 @@ export function LiveScoringPage() {
             inningsNumber={inningsNumber}
             target={target}
             maxOvers={maxOvers}
+            battingTeamIndex={
+              inningsNumber === 1
+                ? tossBattingTeamIndex
+                : tossBattingTeamIndex === 0
+                  ? 1
+                  : 0
+            }
           />
         ) : inningsState.status === "closed" ? (
           <InningsSummaryScreen
@@ -1791,16 +2293,25 @@ export function LiveScoringPage() {
               target !== undefined &&
               requiredRuns !== null &&
               requiredRuns > 0 && (
-                <div className="rounded-xl border border-cricket-gold/40 bg-cricket-gold/10 px-4 py-3 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4 text-cricket-gold shrink-0" />
-                    <span className="text-cricket-gold font-bold text-sm">
+                <div className="rounded-xl border border-cricket-gold/50 bg-cricket-gold/15 px-4 py-3.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Target className="w-5 h-5 text-cricket-gold shrink-0" />
+                    <span className="text-cricket-gold font-bold text-base leading-tight">
                       Need{" "}
-                      <span className="text-lg font-black">{requiredRuns}</span>{" "}
+                      <span className="text-2xl font-black tabular-nums">
+                        {requiredRuns}
+                      </span>{" "}
                       runs
-                      {requiredBalls !== null && requiredBalls > 0
-                        ? ` from ${requiredBalls} ball${requiredBalls === 1 ? "" : "s"}`
-                        : ""}
+                      {requiredBalls !== null && requiredBalls > 0 && (
+                        <>
+                          {" "}
+                          from{" "}
+                          <span className="text-2xl font-black tabular-nums">
+                            {requiredBalls}
+                          </span>{" "}
+                          ball{requiredBalls === 1 ? "" : "s"}
+                        </>
+                      )}
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground font-mono shrink-0">
@@ -1811,6 +2322,21 @@ export function LiveScoringPage() {
 
             {/* ── Score Banner ── */}
             <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
+              {/* Target strip for 2nd innings */}
+              {inningsNumber === 2 && target !== undefined && (
+                <div className="px-4 py-2 bg-electric-blue/10 border-b border-electric-blue/20 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-electric-blue" />
+                    <span className="text-xs font-bold text-electric-blue uppercase tracking-wider">
+                      Target:{" "}
+                      <span className="text-lg font-black">{target}</span>
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    2nd Innings
+                  </span>
+                </div>
+              )}
               <div className="px-4 py-3 flex items-end justify-between gap-4">
                 <div>
                   <div className="font-score font-black text-5xl text-foreground glow-green leading-none">
@@ -2007,15 +2533,19 @@ export function LiveScoringPage() {
               <ScoringButtons
                 onRun={(n) => {
                   scoring.recordBall({ type: "RUNS", runs: n });
-                  if (n === 6) toast("SIX! 🏏", { icon: "🏆" });
-                  else if (n === 4) toast("FOUR! 🏏", { icon: "🟢" });
+                  if (n === 6) toast(getCommentary("six"), { icon: "🏆" });
+                  else if (n === 4)
+                    toast(getCommentary("four"), { icon: "🟢" });
+                  else if (n === 0)
+                    toast(getCommentary("dot"), { icon: "·", duration: 1500 });
                 }}
                 onWide={() => {
                   scoring.recordBall({ type: "WIDE" });
+                  toast(getCommentary("wide"), { icon: "🔴" });
                 }}
                 onNoBall={() => {
                   scoring.recordBall({ type: "NO_BALL" });
-                  toast("No Ball — Free Hit next!", { icon: "⚡" });
+                  toast(getCommentary("noball"), { icon: "🔴" });
                 }}
                 onBye={(n) => scoring.recordBall({ type: "BYE", runs: n })}
                 onLegBye={(n) =>
@@ -2073,9 +2603,24 @@ export function LiveScoringPage() {
                 </div>
               </div>
             )}
+
+            {/* ── Ball by Ball History ── */}
+            <BallByBallHistory balls={inningsState.balls} />
+
+            {/* ── Score Graph ── */}
+            {inningsState.currentOver > 0 && (
+              <ScoreGraph balls={inningsState.balls} label="Run Progression" />
+            )}
           </>
         )}
       </main>
+
+      {/* ── QR Code Modal ── */}
+      <QRCodeModal
+        url={`${typeof window !== "undefined" ? window.location.origin : ""}/match/${id}`}
+        open={qrModalOpen}
+        onClose={() => setQrModalOpen(false)}
+      />
 
       {/* ── Dialogs ── */}
       {match && !showFinalResult && (

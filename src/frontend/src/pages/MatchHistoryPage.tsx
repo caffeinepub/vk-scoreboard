@@ -1,0 +1,239 @@
+import type { Match } from "@/backend.d";
+import { AppFooter } from "@/components/AppFooter";
+import { AppHeader } from "@/components/AppHeader";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useListMatches } from "@/hooks/useQueries";
+import { cn } from "@/lib/utils";
+import { useNavigate } from "@tanstack/react-router";
+import { Calendar, History, Trophy, Users } from "lucide-react";
+import { useState } from "react";
+
+type FilterTab = "all" | "live" | "completed";
+
+function oversStr(legalBalls: bigint): string {
+  const n = Number(legalBalls);
+  return `${Math.floor(n / 6)}.${n % 6}`;
+}
+
+function MatchHistoryCard({ match, index }: { match: Match; index: number }) {
+  const navigate = useNavigate();
+  const inn1 = match.innings[0];
+  const inn2 = match.innings[1];
+  const team1 = match.teams[0];
+  const team2 = match.teams[1];
+
+  const formatDate = (ts: bigint) => {
+    const d = new Date(Number(ts) / 1_000_000);
+    return d.toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      data-ocid={`history.item.${index}`}
+      className={cn(
+        "w-full text-left rounded-xl border border-border/50 bg-card p-4 space-y-3 hover:border-primary/30 transition-all animate-slide-up cursor-pointer",
+        match.status === "live" && "border-wicket-red/30",
+        match.status === "completed" && "border-neon-green/20",
+      )}
+      style={{ animationDelay: `${index * 40}ms` }}
+      onClick={() =>
+        void navigate({ to: "/match/$id", params: { id: match.id.toString() } })
+      }
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-display font-semibold text-foreground leading-tight truncate">
+            {match.name}
+          </h3>
+          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+            <Calendar className="w-3 h-3 shrink-0" />
+            {formatDate(match.date)}
+            {match.maxOvers && (
+              <>
+                <span className="text-border">·</span>
+                {match.maxOvers.toString()} ov
+              </>
+            )}
+          </div>
+        </div>
+        {match.status === "live" && (
+          <Badge className="bg-wicket-red/20 text-wicket-red border-wicket-red/40 gap-1 text-xs shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-wicket-red live-pulse inline-block" />
+            LIVE
+          </Badge>
+        )}
+        {match.status === "completed" && (
+          <Badge className="bg-neon-green/10 text-neon-green border-neon-green/20 text-xs shrink-0">
+            Done
+          </Badge>
+        )}
+        {match.status === "setup" && (
+          <Badge
+            variant="outline"
+            className="text-muted-foreground border-border/50 text-xs shrink-0"
+          >
+            Setup
+          </Badge>
+        )}
+      </div>
+
+      {/* Teams + scores */}
+      {(team1 || team2) && (
+        <div className="flex items-center gap-3">
+          {team1 && (
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Users className="w-3 h-3 shrink-0" />
+                <span className="font-medium text-foreground/80 truncate">
+                  {team1.name}
+                </span>
+              </div>
+              {inn1 && (
+                <div className="font-mono font-bold text-sm text-foreground mt-0.5">
+                  {Number(inn1.totalRuns)}/{Number(inn1.wickets)}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({oversStr(inn1.legalBalls)} ov)
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="text-muted-foreground/50 font-bold text-xs shrink-0">
+            VS
+          </div>
+          {team2 && (
+            <div className="flex-1 min-w-0 text-right">
+              <div className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground/80 truncate">
+                  {team2.name}
+                </span>
+                <Users className="w-3 h-3 shrink-0" />
+              </div>
+              {inn2 && (
+                <div className="font-mono font-bold text-sm text-foreground mt-0.5">
+                  {Number(inn2.totalRuns)}/{Number(inn2.wickets)}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({oversStr(inn2.legalBalls)} ov)
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {match.result && (
+        <div className="pt-2 border-t border-border/30 flex items-center gap-1.5 text-xs text-neon-green">
+          <Trophy className="w-3 h-3" />
+          <span>{match.result}</span>
+        </div>
+      )}
+    </button>
+  );
+}
+
+export function MatchHistoryPage() {
+  const { data: matches, isLoading } = useListMatches();
+  const [filter, setFilter] = useState<FilterTab>("all");
+
+  const filtered = (matches ?? []).filter((m) => {
+    if (filter === "all") return true;
+    if (filter === "live") return m.status === "live";
+    if (filter === "completed") return m.status === "completed";
+    return true;
+  });
+
+  // Sort: completed first, then live, then setup
+  const sorted = [...filtered].sort((a, b) => {
+    const order = (s: Match["status"]) =>
+      s === "completed" ? 0 : s === "live" ? 1 : 2;
+    return order(a.status) - order(b.status);
+  });
+
+  return (
+    <div className="min-h-screen flex flex-col pitch-bg pitch-texture">
+      <AppHeader />
+
+      <main className="flex-1 w-full max-w-screen-lg mx-auto px-4 py-6 space-y-6">
+        {/* Hero */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
+            <History className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="font-display font-black text-2xl text-foreground">
+              Match History
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              All matches — live, completed, and in setup
+            </p>
+          </div>
+        </div>
+
+        {/* Filter tabs */}
+        <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterTab)}>
+          <TabsList className="bg-muted/30 border border-border/40">
+            <TabsTrigger value="all" data-ocid="history.all.tab">
+              All
+            </TabsTrigger>
+            <TabsTrigger value="live" data-ocid="history.live.tab">
+              Live
+            </TabsTrigger>
+            <TabsTrigger value="completed" data-ocid="history.completed.tab">
+              Completed
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {/* Content */}
+        {isLoading ? (
+          <div data-ocid="history.loading_state" className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton
+                // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
+                key={i}
+                className="h-28 rounded-xl shimmer animate-pulse"
+              />
+            ))}
+          </div>
+        ) : sorted.length > 0 ? (
+          <div className="space-y-3">
+            {sorted.map((match, i) => (
+              <MatchHistoryCard
+                key={match.id.toString()}
+                match={match}
+                index={i + 1}
+              />
+            ))}
+          </div>
+        ) : (
+          <div
+            data-ocid="history.empty_state"
+            className="text-center py-16 space-y-3"
+          >
+            <div className="w-16 h-16 rounded-full border-2 border-border/50 flex items-center justify-center mx-auto">
+              <History className="w-7 h-7 text-muted-foreground/30" />
+            </div>
+            <p className="text-foreground font-semibold">No matches found</p>
+            <p className="text-sm text-muted-foreground">
+              {filter === "all"
+                ? "No matches have been created yet."
+                : `No ${filter} matches.`}
+            </p>
+          </div>
+        )}
+      </main>
+
+      <AppFooter />
+    </div>
+  );
+}

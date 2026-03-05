@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/hooks/useAuth";
+import { MatchHistoryPage } from "@/pages/MatchHistoryPage";
 import { MatchListPage } from "@/pages/MatchListPage";
 import { PublicScoreboardPage } from "@/pages/PublicScoreboardPage";
 import { AdminDashboardPage } from "@/pages/admin/AdminDashboardPage";
@@ -7,7 +8,10 @@ import { AdminLoginPage } from "@/pages/admin/AdminLoginPage";
 import { BallCorrectionPage } from "@/pages/admin/BallCorrectionPage";
 import { CreateMatchPage } from "@/pages/admin/CreateMatchPage";
 import { LiveScoringPage } from "@/pages/admin/LiveScoringPage";
+import { PlayerProfilesPage } from "@/pages/admin/PlayerProfilesPage";
 import { TeamSetupPage } from "@/pages/admin/TeamSetupPage";
+import { TournamentDetailPage } from "@/pages/admin/TournamentDetailPage";
+import { TournamentListPage } from "@/pages/admin/TournamentListPage";
 import {
   Outlet,
   RouterProvider,
@@ -51,6 +55,12 @@ const matchRoute = createRoute({
   component: PublicScoreboardPage,
 });
 
+const historyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/history",
+  component: MatchHistoryPage,
+});
+
 // ─── Admin routes ─────────────────────────────────────────────────────────────
 
 const adminLoginRoute = createRoute({
@@ -89,17 +99,39 @@ const ballCorrectionRoute = createRoute({
   component: BallCorrectionPage,
 });
 
+const tournamentListRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/tournaments",
+  component: TournamentListPage,
+});
+
+const tournamentDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/tournament/$id",
+  component: TournamentDetailPage,
+});
+
+const playerProfilesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/players",
+  component: PlayerProfilesPage,
+});
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
   matchRoute,
+  historyRoute,
   adminLoginRoute,
   adminDashboardRoute,
   createMatchRoute,
   teamSetupRoute,
   liveScoringRoute,
   ballCorrectionRoute,
+  tournamentListRoute,
+  tournamentDetailRoute,
+  playerProfilesRoute,
 ]);
 
 const router = createRouter({ routeTree });

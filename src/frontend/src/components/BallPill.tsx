@@ -28,11 +28,12 @@ export function BallPill({ ball, size = "sm" }: BallPillProps) {
     return (
       <div
         className={cn(
-          "ball-dot",
+          "ball-dot relative",
           dim,
           "bg-wide-purple/20 border border-wide-purple/50 text-wide-purple font-bold",
         )}
       >
+        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-wicket-red border border-background" />
         Wd
       </div>
     );
@@ -42,11 +43,12 @@ export function BallPill({ ball, size = "sm" }: BallPillProps) {
     return (
       <div
         className={cn(
-          "ball-dot",
+          "ball-dot relative",
           dim,
           "bg-noball-orange/20 border border-noball-orange/50 text-noball-orange font-bold",
         )}
       >
+        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-wicket-red border border-background" />
         Nb
       </div>
     );
