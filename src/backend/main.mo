@@ -6,11 +6,13 @@ import Nat "mo:core/Nat";
 import Runtime "mo:core/Runtime";
 import Time "mo:core/Time";
 import Principal "mo:core/Principal";
+import Migration "migration";
 
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 
-
+// Specify the data migration through the with clause
+(with migration = Migration.run)
 actor {
   // Initialize the access control system
   let accessControlState = AccessControl.initState();
@@ -132,9 +134,6 @@ actor {
 
   // Match Management
   public shared ({ caller }) func createMatch(name : Text, date : Time.Time, maxOvers : ?Nat) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can create matches");
-    };
     let newMatch : Match = {
       id = nextMatchId;
       name;
@@ -152,9 +151,6 @@ actor {
 
   // Team Management
   public shared ({ caller }) func addTeam(matchId : Nat, teamName : Text, color : Color) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can add teams");
-    };
     switch (matches.get(matchId)) {
       case (null) { Runtime.trap("Match not found") };
       case (?match) {
@@ -178,9 +174,6 @@ actor {
 
   // Player Management
   public shared ({ caller }) func addPlayer(matchId : Nat, teamId : Nat, playerName : Text, jerseyNumber : Nat) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can add players");
-    };
     switch (matches.get(matchId)) {
       case (null) { Runtime.trap("Match not found") };
       case (?match) {
@@ -230,11 +223,8 @@ actor {
     };
   };
 
-  // Delete Match - User only
+  // Delete Match
   public shared ({ caller }) func deleteMatch(matchId : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can delete matches");
-    };
     switch (matches.get(matchId)) {
       case (null) { Runtime.trap("Match not found") };
       case (?_) {
@@ -245,9 +235,6 @@ actor {
 
   // Rematch
   public shared ({ caller }) func rematch(matchId : Nat) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can create rematches");
-    };
     switch (matches.get(matchId)) {
       case (null) { Runtime.trap("Match not found") };
       case (?originalMatch) {
@@ -316,9 +303,6 @@ actor {
     legByes : Nat,
     result : ?Text,
   ) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can save innings results");
-    };
     switch (matches.get(matchId)) {
       case (null) { Runtime.trap("Match not found") };
       case (?match) {
@@ -365,4 +349,3 @@ actor {
     matches.values().toArray().sort(Match.compareById);
   };
 };
-

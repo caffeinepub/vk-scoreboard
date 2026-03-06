@@ -3,32 +3,22 @@ import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActor } from "@/hooks/useActor";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreateMatch } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
-import { Calendar, Loader2, Plus, RefreshCw, Shield, Wifi } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Calendar, Loader2, Plus, RefreshCw, Shield } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 export function CreateMatchPage() {
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
-  const { actor, isFetching } = useActor();
   const createMatch = useCreateMatch();
 
   const [name, setName] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [maxOvers, setMaxOvers] = useState("");
-
-  // Track whether we're in an early "preparing" window (first 2s)
-  const [isPreparing, setIsPreparing] = useState(true);
-  const preparingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Show "Backend loading..." banner until actor is ready or 8s passes
-  const [showBackendBanner, setShowBackendBanner] = useState(!actor);
-  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Pending submit args for retry
   const pendingArgsRef = useRef<{
@@ -37,29 +27,7 @@ export function CreateMatchPage() {
     maxOvers: bigint | null;
   } | null>(null);
 
-  useEffect(() => {
-    preparingTimerRef.current = setTimeout(() => setIsPreparing(false), 2000);
-    bannerTimerRef.current = setTimeout(
-      () => setShowBackendBanner(false),
-      8000,
-    );
-    return () => {
-      if (preparingTimerRef.current) clearTimeout(preparingTimerRef.current);
-      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
-    };
-  }, []);
-
-  // Hide banner once actor becomes available
-  useEffect(() => {
-    if (actor && !isFetching) {
-      setShowBackendBanner(false);
-      setIsPreparing(false);
-    }
-  }, [actor, isFetching]);
-
-  const isBackendReady = !!actor && !isFetching;
-  const isButtonDisabled =
-    createMatch.isPending || !name.trim() || (!isBackendReady && isPreparing);
+  const isButtonDisabled = createMatch.isPending || !name.trim();
 
   const doSubmit = async (
     matchName: string,
@@ -118,39 +86,6 @@ export function CreateMatchPage() {
     return "Connection failed. Please wait a moment and try again.";
   };
 
-  const getSubmitLabel = () => {
-    if (isFetching) {
-      return (
-        <>
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          Connecting to backend...
-        </>
-      );
-    }
-    if (isPreparing && !isBackendReady) {
-      return (
-        <>
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          Preparing...
-        </>
-      );
-    }
-    if (createMatch.isPending) {
-      return (
-        <>
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          Creating...
-        </>
-      );
-    }
-    return (
-      <>
-        <Plus className="w-4 h-4 mr-2" />
-        Create Match & Setup Teams
-      </>
-    );
-  };
-
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex flex-col pitch-bg">
@@ -191,19 +126,6 @@ export function CreateMatchPage() {
         <h1 className="font-display font-black text-2xl text-foreground mb-6">
           Create New Match
         </h1>
-
-        {/* Backend loading banner */}
-        {showBackendBanner && (
-          <div
-            data-ocid="create_match.loading_state"
-            className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 border border-border/40 rounded-xl px-4 py-3 mb-4 animate-pulse"
-          >
-            <Wifi className="w-3.5 h-3.5 text-primary shrink-0" />
-            <span>
-              Connecting to backend — you can fill the form while it loads.
-            </span>
-          </div>
-        )}
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
           <div
@@ -339,7 +261,17 @@ export function CreateMatchPage() {
             className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-base box-glow-green"
             data-ocid="create_match.submit_button"
           >
-            {getSubmitLabel()}
+            {createMatch.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Match & Setup Teams
+              </>
+            )}
           </Button>
         </form>
       </main>

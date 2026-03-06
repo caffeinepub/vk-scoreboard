@@ -883,61 +883,98 @@ function FinalResultScreen({
 
   return (
     <div className="space-y-4 animate-fade-in" data-ocid="final_result.panel">
-      {/* Winner banner */}
-      <div className="rounded-2xl border border-cricket-gold/40 bg-gradient-to-b from-cricket-gold/10 to-transparent p-5 text-center space-y-3">
-        <Trophy className="w-10 h-10 text-cricket-gold mx-auto" />
-        <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Match Complete
-        </div>
-        <div className="font-display font-black text-2xl text-foreground leading-tight">
-          {resultText}
-        </div>
-        {!isTied && (
-          <div className="text-sm text-muted-foreground">
-            {isTeam2Won ? team2?.name : team1?.name} wins!
-          </div>
-        )}
-      </div>
-
-      {/* Score comparison */}
-      <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
-        <div className="px-3 py-2 bg-muted/30 border-b border-border/20">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Scorecard
+      {/* ── Broadcast-style Result Card ── */}
+      <div className="rounded-2xl overflow-hidden border border-cricket-gold/40 bg-gradient-to-b from-cricket-gold/10 via-card to-card">
+        {/* Header badge */}
+        <div className="flex items-center justify-center gap-2 px-4 py-3 bg-cricket-gold/15 border-b border-cricket-gold/20">
+          <Trophy className="w-4 h-4 text-cricket-gold" />
+          <span className="text-xs font-black uppercase tracking-[0.2em] text-cricket-gold">
+            Match Result
           </span>
+          <Trophy className="w-4 h-4 text-cricket-gold" />
         </div>
-        <div className="divide-y divide-border/20">
-          {/* Team 1 */}
-          <div className="px-4 py-3 flex items-center justify-between">
-            <div>
-              <div className="font-semibold text-sm text-foreground">
-                {team1?.name ?? "Team 1"}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                1st Innings · {inn1OversStr} ov · {innings1.wickets}W
-              </div>
-            </div>
-            <div className="font-score font-black text-2xl text-foreground">
-              {innings1.totalRuns}/{innings1.wickets}
-            </div>
-          </div>
 
-          {/* Team 2 */}
-          <div className="px-4 py-3 flex items-center justify-between">
-            <div>
-              <div className="font-semibold text-sm text-foreground">
-                {team2?.name ?? "Team 2"}
+        {/* Scorecard rows */}
+        <div className="divide-y divide-border/20">
+          {/* Team 1 row */}
+          <div
+            className={cn(
+              "px-4 py-4 flex items-center justify-between gap-3 transition-colors",
+              !isTeam2Won && !isTied && "bg-neon-green/5",
+            )}
+          >
+            <div className="min-w-0">
+              <div
+                className={cn(
+                  "font-display font-bold text-base leading-tight truncate",
+                  !isTeam2Won && !isTied
+                    ? "text-neon-green"
+                    : "text-foreground/80",
+                )}
+              >
+                {team1?.name ?? "Team 1"}
+                {!isTeam2Won && !isTied && (
+                  <span className="ml-2 text-xs bg-neon-green/20 text-neon-green px-1.5 py-0.5 rounded-full font-semibold">
+                    WON
+                  </span>
+                )}
               </div>
-              <div className="text-xs text-muted-foreground">
-                2nd Innings · {inn2OversStr} ov · {innings2.wickets}W · Target{" "}
-                {target}
+              <div className="text-xs text-muted-foreground mt-0.5 font-mono">
+                1st Innings · {inn1OversStr} ov
               </div>
             </div>
             <div
               className={cn(
-                "font-score font-black text-2xl",
+                "font-score font-black text-3xl tabular-nums shrink-0",
+                !isTeam2Won && !isTied
+                  ? "text-neon-green drop-shadow-[0_0_8px_rgba(74,222,128,0.6)]"
+                  : "text-foreground",
+              )}
+            >
+              {innings1.totalRuns}/{innings1.wickets}
+            </div>
+          </div>
+
+          {/* Team 2 row */}
+          <div
+            className={cn(
+              "px-4 py-4 flex items-center justify-between gap-3 transition-colors",
+              isTeam2Won && "bg-neon-green/5",
+              isTied && "bg-cricket-gold/5",
+            )}
+          >
+            <div className="min-w-0">
+              <div
+                className={cn(
+                  "font-display font-bold text-base leading-tight truncate",
+                  isTeam2Won
+                    ? "text-neon-green"
+                    : isTied
+                      ? "text-cricket-gold"
+                      : "text-foreground/80",
+                )}
+              >
+                {team2?.name ?? "Team 2"}
+                {isTeam2Won && (
+                  <span className="ml-2 text-xs bg-neon-green/20 text-neon-green px-1.5 py-0.5 rounded-full font-semibold">
+                    WON
+                  </span>
+                )}
+                {isTied && (
+                  <span className="ml-2 text-xs bg-cricket-gold/20 text-cricket-gold px-1.5 py-0.5 rounded-full font-semibold">
+                    TIED
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5 font-mono">
+                2nd Innings · {inn2OversStr} ov · Target {target}
+              </div>
+            </div>
+            <div
+              className={cn(
+                "font-score font-black text-3xl tabular-nums shrink-0",
                 isTeam2Won
-                  ? "text-neon-green glow-green"
+                  ? "text-neon-green drop-shadow-[0_0_8px_rgba(74,222,128,0.6)]"
                   : isTied
                     ? "text-cricket-gold"
                     : "text-foreground",
@@ -945,6 +982,13 @@ function FinalResultScreen({
             >
               {innings2.totalRuns}/{innings2.wickets}
             </div>
+          </div>
+        </div>
+
+        {/* Result text */}
+        <div className="px-4 py-4 bg-gradient-to-r from-transparent via-cricket-gold/5 to-transparent border-t border-cricket-gold/20 text-center">
+          <div className="font-display font-black text-xl text-foreground leading-tight">
+            {resultText}
           </div>
         </div>
       </div>
@@ -1026,37 +1070,41 @@ function FinalResultScreen({
       </div>
 
       {/* Action buttons */}
-      <div className="flex gap-3 no-print">
+      <div className="space-y-2 no-print">
+        {/* Rematch — primary full-width action */}
         <Button
           onClick={onRematch}
           disabled={isRematching}
-          className="flex-1 bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 font-bold box-glow-green"
+          className="w-full h-14 bg-primary text-primary-foreground hover:bg-primary/90 font-black text-lg box-glow-green"
           data-ocid="final_result.rematch.button"
         >
           {isRematching ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
           ) : (
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <RefreshCw className="w-5 h-5 mr-2" />
           )}
-          {isRematching ? "Creating..." : "Rematch"}
+          {isRematching ? "Creating Rematch..." : "🏏 Rematch"}
         </Button>
-        <Button
-          onClick={() => window.print()}
-          variant="outline"
-          className="border-border/50 text-muted-foreground hover:text-foreground"
-          data-ocid="final_result.print.button"
-          title="Export / Print Scorecard"
-        >
-          <Printer className="w-4 h-4" />
-        </Button>
-        <Button
-          onClick={onNewMatch}
-          variant="outline"
-          className="flex-1 border-border/50 text-muted-foreground"
-          data-ocid="final_result.new_match.button"
-        >
-          Back to Matches
-        </Button>
+        {/* Secondary actions */}
+        <div className="flex gap-2">
+          <Button
+            onClick={onNewMatch}
+            variant="outline"
+            className="flex-1 border-border/50 text-muted-foreground hover:text-foreground"
+            data-ocid="final_result.new_match.button"
+          >
+            Back to Matches
+          </Button>
+          <Button
+            onClick={() => window.print()}
+            variant="outline"
+            className="border-border/50 text-muted-foreground hover:text-foreground"
+            data-ocid="final_result.print.button"
+            title="Export / Print Scorecard"
+          >
+            <Printer className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -2558,10 +2606,7 @@ export function LiveScoringPage() {
                 }}
                 onEndInnings={() => setEndInningsDialogOpen(true)}
                 isFreeHit={inningsState.isFreeHitNext}
-                disabled={
-                  inningsState.pendingBatsmanChange ||
-                  inningsState.pendingBowlerChange
-                }
+                disabled={false}
               />
             </div>
 
