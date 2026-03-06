@@ -7,8 +7,8 @@ import { useActor } from "./useActor";
 // ─── Helper: wait for actor to be ready ──────────────────────────────────────
 async function waitForActor(
   getActor: () => backendInterface | null,
-  timeoutMs = 10000,
-  intervalMs = 150,
+  timeoutMs = 20000,
+  intervalMs = 200,
 ): Promise<backendInterface> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -17,7 +17,7 @@ async function waitForActor(
     await new Promise<void>((r) => setTimeout(r, intervalMs));
   }
   throw new Error(
-    "Backend connection timed out. Please refresh and try again.",
+    "Backend connection timed out. Please refresh the page and try again.",
   );
 }
 
@@ -100,10 +100,19 @@ export function useCreateMatch() {
       maxOvers: bigint | null;
     }) => {
       const resolvedActor = await waitForActor(() => actorRef.current);
-      return resolvedActor.createMatch(name, date, maxOvers);
+      try {
+        return await resolvedActor.createMatch(name, date, maxOvers);
+      } catch (err) {
+        // Re-throw with a clearer message
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("Unauthorized") || msg.includes("403")) {
+          throw new Error("Unauthorized: Please log out and back in.");
+        }
+        throw new Error(`Failed to create match: ${msg}`);
+      }
     },
-    retry: 1,
-    retryDelay: 500,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * attempt, 3000),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["matches"] });
     },

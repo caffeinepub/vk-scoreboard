@@ -30,6 +30,7 @@ export function CreateMatchPage() {
   } | null>(null);
 
   const isConnecting = actorLoading && !actor;
+  // Button is only disabled if form is empty or a call is in flight
   const isButtonDisabled = createMatch.isPending || !name.trim();
 
   const doSubmit = async (
@@ -80,14 +81,19 @@ export function CreateMatchPage() {
   const getErrorMessage = () => {
     if (!createMatch.error) return null;
     const msg =
-      createMatch.error instanceof Error ? createMatch.error.message : "";
-    if (msg.includes("timed out"))
-      return "Backend connection timed out. Please refresh and try again.";
+      createMatch.error instanceof Error
+        ? createMatch.error.message
+        : String(createMatch.error);
+    if (msg.includes("timed out") || msg.includes("timeout"))
+      return "The backend took too long to respond. Please check your connection and try again.";
     if (msg.includes("not ready") || msg.includes("Connecting"))
       return "Still connecting to backend — please wait a moment and try again.";
     if (msg.includes("Unauthorized") || msg.includes("403"))
       return "Authorization error. Please log out and back in.";
-    return "Connection failed. Please wait a moment and try again.";
+    // Show the actual error for easier debugging
+    return msg.length > 10
+      ? msg
+      : "Connection failed. Please wait a moment and try again.";
   };
 
   if (!isLoggedIn) {
@@ -134,10 +140,19 @@ export function CreateMatchPage() {
         {isConnecting && (
           <div
             data-ocid="create_match.loading_state"
-            className="rounded-xl border border-border/40 bg-muted/30 px-4 py-2 mb-4 text-sm text-muted-foreground flex items-center gap-2"
+            className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-2 mb-4 text-sm text-primary/80 flex items-center gap-2"
           >
-            <RefreshCw className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
-            Connecting to backend — you can fill the form while this loads...
+            <RefreshCw className="w-3.5 h-3.5 animate-spin flex-shrink-0 text-primary" />
+            Connecting to backend — fill the form while this loads...
+          </div>
+        )}
+        {!isConnecting && !actor && (
+          <div
+            data-ocid="create_match.loading_state"
+            className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2 mb-4 text-sm text-destructive flex items-center gap-2"
+          >
+            <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
+            Backend not connected. Try refreshing the page.
           </div>
         )}
 
