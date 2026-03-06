@@ -56,7 +56,6 @@ import {
   AlertTriangle,
   ChevronLeft,
   Edit2,
-  Loader2,
   Printer,
   QrCode,
   RefreshCw,
@@ -687,6 +686,7 @@ interface FinalResultScreenProps {
   onNewMatch: () => void;
   onRematch: () => void;
   isRematching: boolean;
+  tossBattingTeamIndex: 0 | 1;
 }
 
 function buildResultText(
@@ -694,17 +694,19 @@ function buildResultText(
   innings1: InningsState,
   innings2: InningsState,
   autoCloseReason: AutoCloseReason,
+  battingFirstTeamIndex: 0 | 1,
   maxOvers?: number,
 ): string {
-  const team1 = match.teams[0];
-  const team2 = match.teams[1];
+  const team1 = match.teams[battingFirstTeamIndex]; // batted 1st
+  const team2 = match.teams[battingFirstTeamIndex === 0 ? 1 : 0]; // batted 2nd
   const t1Name = team1?.name ?? "Team 1";
   const t2Name = team2?.name ?? "Team 2";
 
   if (autoCloseReason === "target_reached") {
-    // Team 2 won — calculate wickets remaining
+    // Team 2 (2nd innings batting team) won — calculate wickets remaining
+    const team2Players = match.teams[battingFirstTeamIndex === 0 ? 1 : 0];
     const wicketsRemaining =
-      (match.teams[1]?.players.length ?? 11) - 1 - innings2.wickets;
+      (team2Players?.players.length ?? 11) - 1 - innings2.wickets;
     const ballsRemaining = maxOvers ? maxOvers * 6 - innings2.legalBalls : null;
     const ballsStr =
       ballsRemaining !== null && ballsRemaining > 0
@@ -717,8 +719,9 @@ function buildResultText(
   }
 
   if (innings2.totalRuns > innings1.totalRuns) {
+    const team2Players = match.teams[battingFirstTeamIndex === 0 ? 1 : 0];
     const wicketsRemaining =
-      (match.teams[1]?.players.length ?? 11) - 1 - innings2.wickets;
+      (team2Players?.players.length ?? 11) - 1 - innings2.wickets;
     if (wicketsRemaining > 0) {
       return `${t2Name} won by ${wicketsRemaining} wicket${wicketsRemaining === 1 ? "" : "s"}`;
     }
@@ -729,7 +732,7 @@ function buildResultText(
     return "Match Tied";
   }
 
-  // Team 1 won
+  // Team 1 (1st innings batting team) won
   const runMargin = innings1.totalRuns - innings2.totalRuns;
   return `${t1Name} won by ${runMargin} run${runMargin === 1 ? "" : "s"}`;
 }
@@ -809,14 +812,17 @@ function FinalResultScreen({
   onNewMatch,
   onRematch,
   isRematching,
+  tossBattingTeamIndex,
 }: FinalResultScreenProps) {
-  const team1 = match.teams[0];
-  const team2 = match.teams[1];
+  // team1 = team that batted in 1st innings, team2 = team that batted in 2nd innings
+  const team1 = match.teams[tossBattingTeamIndex];
+  const team2 = match.teams[tossBattingTeamIndex === 0 ? 1 : 0];
   const resultText = buildResultText(
     match,
     innings1,
     innings2,
     autoCloseReason,
+    tossBattingTeamIndex,
     maxOvers,
   );
   const target = innings1.totalRuns + 1;
@@ -838,13 +844,18 @@ function FinalResultScreen({
   const totalFours = allBalls.filter((b) => b.runs === 4 && !b.isWicket).length;
   const totalSixes = allBalls.filter((b) => b.runs === 6 && !b.isWicket).length;
 
-  // Best batsman (all innings combined)
+  // Best batsman (all innings combined) — use correct batting team per innings
   let bestBatsmanName = "-";
   let bestBatsmanRuns = 0;
   let bestBatsmanBalls = 0;
   let bestBatsmanOut = false;
   for (const innings of [innings1, innings2]) {
-    const battingTeamIdx = innings === innings1 ? 0 : 1;
+    const battingTeamIdx =
+      innings === innings1
+        ? tossBattingTeamIndex
+        : tossBattingTeamIndex === 0
+          ? 1
+          : 0;
     const battingTeam = match.teams[battingTeamIdx];
     for (const [id, stats] of innings.batsmanStats) {
       if (stats.runs > bestBatsmanRuns) {
@@ -859,13 +870,18 @@ function FinalResultScreen({
     }
   }
 
-  // Best bowler
+  // Best bowler — use correct bowling team per innings
   let bestBowlerName = "-";
   let bestBowlerW = 0;
   let bestBowlerR = 0;
   let bestBowlerOvers = "0";
   for (const innings of [innings1, innings2]) {
-    const bowlingTeamIdx = innings === innings1 ? 1 : 0;
+    const bowlingTeamIdx =
+      innings === innings1
+        ? tossBattingTeamIndex === 0
+          ? 1
+          : 0
+        : tossBattingTeamIndex;
     const bowlingTeam = match.teams[bowlingTeamIdx];
     for (const [id, stats] of innings.bowlerStats) {
       if (
@@ -898,7 +914,7 @@ function FinalResultScreen({
 
         {/* Scorecard rows */}
         <div className="divide-y divide-border/20">
-          {/* Team 1 row */}
+          {/* Team 1 row (batted 1st) */}
           <div
             className={cn(
               "px-4 py-4 flex items-center justify-between gap-3 transition-colors",
@@ -937,7 +953,7 @@ function FinalResultScreen({
             </div>
           </div>
 
-          {/* Team 2 row */}
+          {/* Team 2 row (batted 2nd) */}
           <div
             className={cn(
               "px-4 py-4 flex items-center justify-between gap-3 transition-colors",
@@ -995,14 +1011,14 @@ function FinalResultScreen({
         </div>
       </div>
 
-      {/* Batting summary - Team 1 */}
+      {/* Batting summary - 1st innings batting team */}
       <InningsBattingSummary
         label={`${team1?.name ?? "Team 1"} — Batting`}
         snapshot={innings1}
         team={team1}
       />
 
-      {/* Batting summary - Team 2 */}
+      {/* Batting summary - 2nd innings batting team */}
       <InningsBattingSummary
         label={`${team2?.name ?? "Team 2"} — Batting`}
         snapshot={innings2}
@@ -1080,12 +1096,7 @@ function FinalResultScreen({
           className="w-full h-14 bg-primary text-primary-foreground hover:bg-primary/90 font-black text-lg box-glow-green"
           data-ocid="final_result.rematch.button"
         >
-          {isRematching ? (
-            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-          ) : (
-            <RefreshCw className="w-5 h-5 mr-2" />
-          )}
-          {isRematching ? "Creating Rematch..." : "🏏 Rematch"}
+          <RefreshCw className="w-5 h-5 mr-2" />🏏 Rematch
         </Button>
         {/* Secondary actions */}
         <div className="flex gap-2">
@@ -1200,6 +1211,7 @@ interface InningsSummaryScreenProps {
   onStart2ndInnings?: () => void;
   innings1Snapshot?: InningsState | null;
   target?: number;
+  tossBattingTeamIndex?: 0 | 1;
 }
 
 function InningsSummaryScreen({
@@ -1209,9 +1221,18 @@ function InningsSummaryScreen({
   onStart2ndInnings,
   innings1Snapshot,
   target,
+  tossBattingTeamIndex = 0,
 }: InningsSummaryScreenProps) {
-  const battingTeamIndex = inningsNumber === 1 ? 0 : 1;
+  // Derive correct batting team index using toss result
+  const battingTeamIndex =
+    inningsNumber === 1
+      ? tossBattingTeamIndex
+      : tossBattingTeamIndex === 0
+        ? 1
+        : 0;
   const battingTeam = match.teams[battingTeamIndex];
+  // Bowling team is the opposite
+  const bowlingTeamIndex = battingTeamIndex === 0 ? 1 : 0;
   const oversPlayed = `${snapshot.currentOver}.${snapshot.currentOverLegalBalls}`;
 
   // Determine winner for 2nd innings summary (non-final)
@@ -1222,8 +1243,9 @@ function InningsSummaryScreen({
     } else if (snapshot.totalRuns === innings1Snapshot.totalRuns) {
       matchResult = "Match Tied";
     } else {
-      const team1 = match.teams[0];
-      matchResult = `${team1?.name ?? "Team 1"} won by ${innings1Snapshot.totalRuns - snapshot.totalRuns} runs`;
+      // 1st innings batting team won
+      const firstInningsBattingTeam = match.teams[tossBattingTeamIndex];
+      matchResult = `${firstInningsBattingTeam?.name ?? "Team 1"} won by ${innings1Snapshot.totalRuns - snapshot.totalRuns} runs`;
     }
   }
 
@@ -1251,7 +1273,8 @@ function InningsSummaryScreen({
         </div>
         {inningsNumber === 1 && (
           <div className="mt-2 px-4 py-2 rounded-xl bg-electric-blue/10 border border-electric-blue/30 text-electric-blue font-bold text-sm">
-            Target for {match.teams[1]?.name ?? "Team 2"}:{" "}
+            Target for{" "}
+            {match.teams[tossBattingTeamIndex === 0 ? 1 : 0]?.name ?? "Team 2"}:{" "}
             {snapshot.totalRuns + 1}
           </div>
         )}
@@ -1382,7 +1405,6 @@ function InningsSummaryScreen({
             </thead>
             <tbody>
               {Array.from(snapshot.bowlerStats.entries()).map(([id, stats]) => {
-                const bowlingTeamIndex = inningsNumber === 1 ? 1 : 0;
                 const bowlingTeam = match.teams[bowlingTeamIndex];
                 const player = bowlingTeam?.players.find(
                   (p) => Number(p.id) === id,
@@ -1481,24 +1503,8 @@ interface TossScreenProps {
 function TossScreen({ match, onTossComplete }: TossScreenProps) {
   const team1 = match.teams[0];
   const team2 = match.teams[1];
-  const [isFlipping, setIsFlipping] = useState(false);
-  const [tossResult, setTossResult] = useState<"Heads" | "Tails" | null>(null);
+  // Step 1: select toss winner. Step 2: choose bat or bowl.
   const [winningTeamIndex, setWinningTeamIndex] = useState<0 | 1 | null>(null);
-
-  const flipCoin = () => {
-    if (isFlipping) return;
-    setIsFlipping(true);
-    setTossResult(null);
-    setWinningTeamIndex(null);
-
-    setTimeout(() => {
-      const result = Math.random() < 0.5 ? "Heads" : "Tails";
-      const winner = Math.random() < 0.5 ? 0 : 1;
-      setTossResult(result);
-      setWinningTeamIndex(winner as 0 | 1);
-      setIsFlipping(false);
-    }, 1600);
-  };
 
   const winningTeam =
     winningTeamIndex !== null ? (winningTeamIndex === 0 ? team1 : team2) : null;
@@ -1514,72 +1520,80 @@ function TossScreen({ match, onTossComplete }: TossScreenProps) {
         </p>
       </div>
 
-      {/* Coin */}
-      <div className="flex justify-center py-4">
-        <div
-          className={cn(
-            "w-24 h-24 rounded-full border-4 border-cricket-gold bg-cricket-gold/20 flex items-center justify-center font-display font-black text-3xl text-cricket-gold",
-            isFlipping && "coin-flip",
-          )}
-        >
-          {isFlipping
-            ? "🪙"
-            : tossResult === "Heads"
-              ? "H"
-              : tossResult === "Tails"
-                ? "T"
-                : "🪙"}
+      {/* Coin icon */}
+      <div className="flex justify-center py-2">
+        <div className="w-20 h-20 rounded-full border-4 border-cricket-gold bg-cricket-gold/20 flex items-center justify-center font-display font-black text-3xl text-cricket-gold">
+          🪙
         </div>
       </div>
 
-      {/* Flip button */}
-      {!tossResult && (
-        <Button
-          onClick={flipCoin}
-          disabled={isFlipping}
-          className="w-full h-14 bg-cricket-gold/20 text-cricket-gold border border-cricket-gold/50 hover:bg-cricket-gold/30 font-bold text-lg box-glow-gold"
-          data-ocid="toss.flip.button"
-        >
-          {isFlipping ? "Flipping..." : "🪙 Flip Coin"}
-        </Button>
+      {/* Step 1: Select toss winner */}
+      {winningTeamIndex === null && (
+        <div className="space-y-3 animate-fade-in">
+          <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Who won the toss?
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setWinningTeamIndex(0)}
+              className="h-16 rounded-xl border border-cricket-gold/50 bg-cricket-gold/10 text-cricket-gold hover:bg-cricket-gold/20 font-bold text-sm transition-all active:scale-95 px-3"
+              data-ocid="toss.winner_team1.button"
+            >
+              {team1?.name ?? "Team 1"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setWinningTeamIndex(1)}
+              className="h-16 rounded-xl border border-cricket-gold/50 bg-cricket-gold/10 text-cricket-gold hover:bg-cricket-gold/20 font-bold text-sm transition-all active:scale-95 px-3"
+              data-ocid="toss.winner_team2.button"
+            >
+              {team2?.name ?? "Team 2"}
+            </button>
+          </div>
+        </div>
       )}
 
-      {/* Result */}
-      {tossResult && winningTeamIndex !== null && winningTeam && (
+      {/* Step 2: Bat or Bowl decision */}
+      {winningTeamIndex !== null && winningTeam && (
         <div className="space-y-4 animate-fade-in">
           <div className="rounded-2xl border border-cricket-gold/40 bg-cricket-gold/10 p-4 text-center space-y-1">
             <div className="text-lg font-bold text-cricket-gold">
-              {tossResult}! {winningTeam.name} wins the toss.
+              {winningTeam.name} won the toss.
             </div>
             <p className="text-sm text-muted-foreground">
               Choose to bat or bowl first:
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
+            {/* Bat: toss winner bats → battingTeamIndex = winningTeamIndex */}
             <button
               type="button"
               onClick={() => onTossComplete(winningTeamIndex)}
-              className="h-14 rounded-xl border border-neon-green/50 bg-neon-green/15 text-neon-green hover:bg-neon-green/25 font-bold text-base transition-all active:scale-95 box-glow-green"
+              className="h-16 rounded-xl border border-neon-green/50 bg-neon-green/15 text-neon-green hover:bg-neon-green/25 font-bold text-base transition-all active:scale-95 box-glow-green flex flex-col items-center justify-center gap-1"
               data-ocid="toss.bat.button"
             >
-              🏏 Bat
+              <span className="text-2xl">🏏</span>
+              <span>Bat</span>
             </button>
+            {/* Bowl: toss winner bowls → other team bats → battingTeamIndex = opposite */}
             <button
               type="button"
               onClick={() => onTossComplete(winningTeamIndex === 0 ? 1 : 0)}
-              className="h-14 rounded-xl border border-electric-blue/50 bg-electric-blue/15 text-electric-blue hover:bg-electric-blue/25 font-bold text-base transition-all active:scale-95 box-glow-blue"
+              className="h-16 rounded-xl border border-electric-blue/50 bg-electric-blue/15 text-electric-blue hover:bg-electric-blue/25 font-bold text-base transition-all active:scale-95 box-glow-blue flex flex-col items-center justify-center gap-1"
               data-ocid="toss.bowl.button"
             >
-              🎯 Bowl
+              <span className="text-2xl">🎯</span>
+              <span>Bowl</span>
             </button>
           </div>
           <button
             type="button"
-            onClick={flipCoin}
+            onClick={() => setWinningTeamIndex(null)}
             className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
-            data-ocid="toss.reflip.button"
+            data-ocid="toss.reset.button"
           >
-            ↩ Redo toss
+            ↩ Change toss winner
           </button>
         </div>
       )}
@@ -1606,13 +1620,8 @@ function SetupScreen({
   maxOvers,
   battingTeamIndex: propBattingTeamIndex,
 }: SetupScreenProps) {
-  // For innings 1: use toss result or default 0. For innings 2: swap.
-  const battingTeamIndex =
-    inningsNumber === 1
-      ? (propBattingTeamIndex ?? 0)
-      : propBattingTeamIndex === 0
-        ? 1
-        : 0;
+  // battingTeamIndex is already computed correctly by the caller (accounts for toss + innings number)
+  const battingTeamIndex = propBattingTeamIndex ?? 0;
   const bowlingTeamIndex = battingTeamIndex === 0 ? 1 : 0;
   const battingTeam = match.teams[battingTeamIndex];
   const bowlingTeam = match.teams[bowlingTeamIndex];
@@ -1766,6 +1775,9 @@ export function LiveScoringPage() {
   const [tossCompleted, setTossCompleted] = useState(false);
   const [tossBattingTeamIndex, setTossBattingTeamIndex] = useState<0 | 1>(0);
 
+  // Guard: block session saves while we are resetting for a new match ID
+  const isResettingRef = useRef(false);
+
   // QR modal state
   const [qrModalOpen, setQrModalOpen] = useState(false);
 
@@ -1814,11 +1826,24 @@ export function LiveScoringPage() {
     if (saved && saved.inningsState.status !== "not-started") {
       setInningsNumber(saved.inningsNumber);
       setInnings1Snapshot(saved.innings1Snapshot);
+      // Restore toss state from session
+      if (saved.tossCompleted) {
+        setTossCompleted(true);
+        setTossBattingTeamIndex(saved.tossBattingTeamIndex);
+      }
       // Restore innings state by replaying balls
       scoring.dispatch({ type: "RESET_INNINGS" });
       // We need to manually restore the state. Use a ref-based approach.
       restoredStateRef.current = saved.inningsState;
       setNeedsRestore(true);
+    } else if (
+      saved?.tossCompleted &&
+      saved.inningsState.status === "not-started"
+    ) {
+      // Toss was completed but innings hasn't started yet — restore toss state only
+      setTossCompleted(true);
+      setTossBattingTeamIndex(saved.tossBattingTeamIndex);
+      setInningsNumber(saved.inningsNumber);
     }
     setSessionLoaded(true);
   }, [match, sessionLoaded, id]);
@@ -1826,6 +1851,7 @@ export function LiveScoringPage() {
   const restoredStateRef = useRef<InningsState | null>(null);
   const [needsRestore, setNeedsRestore] = useState(false);
   const lastSyncRef = useRef<number>(0);
+  const isSyncingRef = useRef(false);
 
   // After RESET_INNINGS triggered by restore, replay the saved balls
   // biome-ignore lint/correctness/useExhaustiveDependencies: scoring.dispatch is stable (useReducer dispatch)
@@ -1891,13 +1917,31 @@ export function LiveScoringPage() {
   // Save session to localStorage whenever relevant state changes
   useEffect(() => {
     if (!sessionLoaded) return;
-    if (inningsState.status === "not-started" && !innings1Snapshot) return;
+    // Block saves during a reset cycle (after rematch / match ID change)
+    if (isResettingRef.current) return;
+    // Save as long as toss is done — even if innings hasn't started, we want to preserve toss result
+    if (
+      inningsState.status === "not-started" &&
+      !innings1Snapshot &&
+      !tossCompleted
+    )
+      return;
     saveSession(id, {
       inningsNumber,
       innings1Snapshot,
       inningsState,
+      tossCompleted,
+      tossBattingTeamIndex,
     });
-  }, [id, inningsNumber, innings1Snapshot, inningsState, sessionLoaded]);
+  }, [
+    id,
+    inningsNumber,
+    innings1Snapshot,
+    inningsState,
+    sessionLoaded,
+    tossCompleted,
+    tossBattingTeamIndex,
+  ]);
 
   // ─── Over Summary Toast ────────────────────────────────────────────────────
   const prevOverRef = useRef(inningsState.currentOver);
@@ -1951,10 +1995,14 @@ export function LiveScoringPage() {
       // Fire-and-forget: save innings result to backend after auto-close
       if (match && reason !== "manual") {
         const snap = inningsState;
-        const team0Id = match.teams[0]?.id ?? 0n;
-        const team1Id = match.teams[1]?.id ?? 0n;
-        const battingTeamId = inningsNumber === 1 ? team0Id : team1Id;
-        const bowlingTeamId = inningsNumber === 1 ? team1Id : team0Id;
+        // Use toss batting team index to correctly assign batting/bowling teams
+        const inn1BattingTeamId = match.teams[tossBattingTeamIndex]?.id ?? 0n;
+        const inn1BowlingTeamId =
+          match.teams[tossBattingTeamIndex === 0 ? 1 : 0]?.id ?? 0n;
+        const battingTeamId =
+          inningsNumber === 1 ? inn1BattingTeamId : inn1BowlingTeamId;
+        const bowlingTeamId =
+          inningsNumber === 1 ? inn1BowlingTeamId : inn1BattingTeamId;
         // For 2nd innings auto-close, we may have a result
         let resultStr: string | null = null;
         if (inningsNumber === 2 && innings1Snapshot) {
@@ -1963,6 +2011,7 @@ export function LiveScoringPage() {
             innings1Snapshot,
             snap,
             reason ?? "manual",
+            tossBattingTeamIndex,
             maxOvers,
           );
         }
@@ -1990,7 +2039,6 @@ export function LiveScoringPage() {
   const [wicketDialogOpen, setWicketDialogOpen] = useState(false);
   const [endInningsDialogOpen, setEndInningsDialogOpen] = useState(false);
   const [showFinalResult, setShowFinalResult] = useState(false);
-  const [isRematching, setIsRematching] = useState(false);
   const [statsSaved, setStatsSaved] = useState(false);
 
   const rematchMutation = useRematch();
@@ -1999,15 +2047,32 @@ export function LiveScoringPage() {
   const saveTeamStatsMutation = useSaveTeamStats();
 
   // ─── Reset toss/match state when match ID changes (after rematch) ────────
-  // biome-ignore lint/correctness/useExhaustiveDependencies: setters are stable
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setters are stable, scoring.dispatch is stable
   useEffect(() => {
+    // Mark that we are in a reset cycle — prevents the save effect from
+    // immediately writing a stale closed-innings state to the new match ID
+    isResettingRef.current = true;
+
+    // Clear any potentially stale session stored under the NEW match ID
+    clearSession(id);
+
+    // Reset ALL state so a fresh match always starts at toss screen
     setTossCompleted(false);
     setTossBattingTeamIndex(0);
     setShowFinalResult(false);
     setInningsNumber(1);
     setInnings1Snapshot(null);
     setStatsSaved(false);
-  }, [id]);
+    // Reset scoring reducer state completely
+    scoring.dispatch({ type: "RESET_INNINGS" });
+
+    // Allow session loads and saves again once state has settled (next tick)
+    const t = setTimeout(() => {
+      isResettingRef.current = false;
+      setSessionLoaded(false); // Trigger session load effect for the new match ID
+    }, 50);
+    return () => clearTimeout(t);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Save player & team stats when final result is shown ─────────────────
   // biome-ignore lint/correctness/useExhaustiveDependencies: savePlayerStatsMutation/saveTeamStatsMutation are stable mutation objects
@@ -2016,10 +2081,14 @@ export function LiveScoringPage() {
     setStatsSaved(true);
 
     const innings2 = inningsState;
-    const team1 = match.teams[0];
-    const team2 = match.teams[1];
 
-    // Determine winner
+    // Use tossBattingTeamIndex to correctly identify which team batted/bowled each innings
+    const innings1BattingTeam = match.teams[tossBattingTeamIndex];
+    const innings1BowlingTeam = match.teams[tossBattingTeamIndex === 0 ? 1 : 0];
+    const innings2BattingTeam = match.teams[tossBattingTeamIndex === 0 ? 1 : 0];
+    const innings2BowlingTeam = match.teams[tossBattingTeamIndex];
+
+    // Determine winner (team2Won = the 2nd innings batting team won)
     const team2Won =
       innings2.autoCloseReason === "target_reached" ||
       innings2.totalRuns > innings1Snapshot.totalRuns;
@@ -2027,7 +2096,7 @@ export function LiveScoringPage() {
       innings2.totalRuns === innings1Snapshot.totalRuns &&
       innings2.autoCloseReason !== "target_reached";
 
-    // Save player stats — batting stats from innings1 (team1 batted)
+    // Save player stats — batting stats from innings1 (tossBattingTeamIndex team batted)
     for (const [id, stats] of innings1Snapshot.batsmanStats) {
       void savePlayerStatsMutation
         .mutateAsync({
@@ -2043,7 +2112,7 @@ export function LiveScoringPage() {
         })
         .catch(() => {});
     }
-    // Bowling stats from innings1 (team2 bowled)
+    // Bowling stats from innings1 (the other team bowled)
     for (const [id, stats] of innings1Snapshot.bowlerStats) {
       void savePlayerStatsMutation
         .mutateAsync({
@@ -2059,7 +2128,7 @@ export function LiveScoringPage() {
         })
         .catch(() => {});
     }
-    // Batting stats from innings2 (team2 batted)
+    // Batting stats from innings2 (the other team batted)
     for (const [id, stats] of innings2.batsmanStats) {
       void savePlayerStatsMutation
         .mutateAsync({
@@ -2075,7 +2144,7 @@ export function LiveScoringPage() {
         })
         .catch(() => {});
     }
-    // Bowling stats from innings2 (team1 bowled)
+    // Bowling stats from innings2 (tossBattingTeamIndex team bowled)
     for (const [id, stats] of innings2.bowlerStats) {
       void savePlayerStatsMutation
         .mutateAsync({
@@ -2092,27 +2161,31 @@ export function LiveScoringPage() {
         .catch(() => {});
     }
 
-    // Save team stats
-    if (team1) {
+    // Save team stats using correctly assigned teams
+    if (innings1BattingTeam) {
       void saveTeamStatsMutation
         .mutateAsync({
-          teamName: team1.name,
+          teamName: innings1BattingTeam.name,
           isWin: !team2Won && !isTied,
           runsScored: BigInt(innings1Snapshot.totalRuns),
           wicketsTaken: BigInt(innings2.wickets),
         })
         .catch(() => {});
     }
-    if (team2) {
+    if (innings2BattingTeam) {
       void saveTeamStatsMutation
         .mutateAsync({
-          teamName: team2.name,
+          teamName: innings2BattingTeam.name,
           isWin: team2Won,
           runsScored: BigInt(innings2.totalRuns),
           wicketsTaken: BigInt(innings1Snapshot.wickets),
         })
         .catch(() => {});
     }
+
+    // Suppress unused variable warnings — these are used conceptually above
+    void innings1BowlingTeam;
+    void innings2BowlingTeam;
   }, [showFinalResult]);
 
   // ─── Live sync: push innings data to backend on every ball (throttled) ──────
@@ -2125,14 +2198,19 @@ export function LiveScoringPage() {
 
     const now = Date.now();
     if (now - lastSyncRef.current < 5000) return; // throttle: max once per 5s
+    if (isSyncingRef.current) return; // prevent concurrent calls
     lastSyncRef.current = now;
 
     const snap = inningsState;
-    const team0Id = match.teams[0]?.id ?? 0n;
-    const team1Id = match.teams[1]?.id ?? 0n;
-    const battingTeamId = inningsNumber === 1 ? team0Id : team1Id;
-    const bowlingTeamId = inningsNumber === 1 ? team1Id : team0Id;
+    const liveInn1BattingId = match.teams[tossBattingTeamIndex]?.id ?? 0n;
+    const liveInn1BowlingId =
+      match.teams[tossBattingTeamIndex === 0 ? 1 : 0]?.id ?? 0n;
+    const battingTeamId =
+      inningsNumber === 1 ? liveInn1BattingId : liveInn1BowlingId;
+    const bowlingTeamId =
+      inningsNumber === 1 ? liveInn1BowlingId : liveInn1BattingId;
 
+    isSyncingRef.current = true;
     void saveInningsResult
       .mutateAsync({
         matchId,
@@ -2148,7 +2226,10 @@ export function LiveScoringPage() {
         legByes: BigInt(snap.legByes),
         result: null,
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        isSyncingRef.current = false;
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inningsState.balls.length, inningsState.status]);
 
@@ -2165,8 +2246,8 @@ export function LiveScoringPage() {
     }
   }, [inningsNumber, inningsState.status, innings1Snapshot]);
 
-  // Derived player lists
-  const bowlingTeamIndex = inningsNumber === 1 ? 1 : 0;
+  // Derived player lists — bowling team is opposite of batting team (based on toss)
+  const bowlingTeamIndex = battingTeamIndex === 0 ? 1 : 0;
   const bowlingTeam = match?.teams[bowlingTeamIndex];
 
   // Players who haven't batted / aren't out
@@ -2212,10 +2293,13 @@ export function LiveScoringPage() {
 
     // Fire-and-forget: save innings result to backend
     if (match) {
-      const team0Id = match.teams[0]?.id ?? 0n;
-      const team1Id = match.teams[1]?.id ?? 0n;
-      const battingTeamId = inningsNumber === 1 ? team0Id : team1Id;
-      const bowlingTeamId = inningsNumber === 1 ? team1Id : team0Id;
+      const inn1BattingTeamId = match.teams[tossBattingTeamIndex]?.id ?? 0n;
+      const inn1BowlingTeamId =
+        match.teams[tossBattingTeamIndex === 0 ? 1 : 0]?.id ?? 0n;
+      const battingTeamId =
+        inningsNumber === 1 ? inn1BattingTeamId : inn1BowlingTeamId;
+      const bowlingTeamId =
+        inningsNumber === 1 ? inn1BowlingTeamId : inn1BattingTeamId;
       void saveInningsResult
         .mutateAsync({
           matchId,
@@ -2233,7 +2317,14 @@ export function LiveScoringPage() {
         })
         .catch(() => {});
     }
-  }, [scoring, inningsNumber, match, matchId, saveInningsResult]);
+  }, [
+    scoring,
+    inningsNumber,
+    match,
+    matchId,
+    saveInningsResult,
+    tossBattingTeamIndex,
+  ]);
 
   const handleStart2ndInnings = useCallback(() => {
     setInningsNumber(2);
@@ -2246,22 +2337,20 @@ export function LiveScoringPage() {
   }, [id, navigate]);
 
   const handleRematch = useCallback(() => {
-    setIsRematching(true);
     rematchMutation.mutate(
       { matchId },
       {
         onSuccess: (newMatchId) => {
+          // Clear both the current match session AND the new match's potential stale session
           clearSession(id);
+          clearSession(newMatchId.toString());
           void navigate({
             to: "/admin/match/$id/score",
             params: { id: newMatchId.toString() },
           });
         },
         onError: () => {
-          // Fallback: navigate to admin on failure
-          setIsRematching(false);
-          clearSession(id);
-          void navigate({ to: "/admin" });
+          toast.error("Failed to create rematch. Please try again.");
         },
       },
     );
@@ -2362,9 +2451,16 @@ export function LiveScoringPage() {
                 LIVE
               </Badge>
             )}
-            {inningsNumber === 2 && !showFinalResult && (
-              <Badge className="bg-electric-blue/20 text-electric-blue border-electric-blue/40 text-xs">
-                2nd Inn
+            {!showFinalResult && (
+              <Badge
+                className={cn(
+                  "text-xs",
+                  inningsNumber === 1
+                    ? "bg-neon-green/10 text-neon-green border-neon-green/30"
+                    : "bg-electric-blue/20 text-electric-blue border-electric-blue/40",
+                )}
+              >
+                {inningsNumber === 1 ? "1st Inn" : "2nd Inn"}
               </Badge>
             )}
           </div>
@@ -2423,7 +2519,8 @@ export function LiveScoringPage() {
             maxOvers={maxOvers}
             onNewMatch={handleNewMatch}
             onRematch={handleRematch}
-            isRematching={isRematching}
+            isRematching={rematchMutation.isPending}
+            tossBattingTeamIndex={tossBattingTeamIndex}
           />
         ) : inningsState.status === "not-started" &&
           inningsNumber === 1 &&
@@ -2443,13 +2540,7 @@ export function LiveScoringPage() {
             inningsNumber={inningsNumber}
             target={target}
             maxOvers={maxOvers}
-            battingTeamIndex={
-              inningsNumber === 1
-                ? tossBattingTeamIndex
-                : tossBattingTeamIndex === 0
-                  ? 1
-                  : 0
-            }
+            battingTeamIndex={battingTeamIndex}
           />
         ) : inningsState.status === "closed" ? (
           <InningsSummaryScreen
@@ -2461,6 +2552,7 @@ export function LiveScoringPage() {
             }
             innings1Snapshot={inningsNumber === 2 ? innings1Snapshot : null}
             target={inningsNumber === 2 ? target : undefined}
+            tossBattingTeamIndex={tossBattingTeamIndex}
           />
         ) : (
           <>

@@ -17,7 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAddPlayer, useAddTeam, useGetMatch } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { CheckCircle, Hash, Loader2, Play, Plus, Users } from "lucide-react";
+import { CheckCircle, Hash, Play, Plus, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -173,14 +173,8 @@ function TeamSection({
               className="w-full h-11 bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
               data-ocid={`setup.team${teamSlot}.add.button`}
             >
-              {addTeamMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  <Plus className="w-4 h-4 mr-1.5" />
-                  Add Team {teamSlot}
-                </>
-              )}
+              <Plus className="w-4 h-4 mr-1.5" />
+              Add Team {teamSlot}
             </Button>
           </form>
         ) : (
@@ -256,11 +250,7 @@ function TeamSection({
                   className="h-10 px-3 bg-primary text-primary-foreground hover:bg-primary/90"
                   data-ocid={`setup.team${teamSlot}.add_player.button`}
                 >
-                  {addPlayerMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Plus className="w-4 h-4" />
-                  )}
+                  <Plus className="w-4 h-4" />
                 </Button>
               </div>
             </form>

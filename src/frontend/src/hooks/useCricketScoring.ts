@@ -227,6 +227,8 @@ export interface PersistedSession {
   inningsNumber: 1 | 2;
   innings1Snapshot: InningsState | null;
   inningsState: InningsState;
+  tossCompleted: boolean;
+  tossBattingTeamIndex: 0 | 1;
 }
 
 export function saveSession(matchId: string, session: PersistedSession): void {
@@ -237,6 +239,8 @@ export function saveSession(matchId: string, session: PersistedSession): void {
         ? serializeState(session.innings1Snapshot)
         : null,
       inningsState: serializeState(session.inningsState),
+      tossCompleted: session.tossCompleted,
+      tossBattingTeamIndex: session.tossBattingTeamIndex,
     };
     localStorage.setItem(`vk_cricket_${matchId}`, JSON.stringify(serialized));
   } catch {
@@ -252,6 +256,8 @@ export function loadSession(matchId: string): PersistedSession | null {
       inningsNumber: 1 | 2;
       innings1Snapshot: Record<string, unknown> | null;
       inningsState: Record<string, unknown>;
+      tossCompleted?: boolean;
+      tossBattingTeamIndex?: 0 | 1;
     };
     return {
       inningsNumber: parsed.inningsNumber,
@@ -259,6 +265,8 @@ export function loadSession(matchId: string): PersistedSession | null {
         ? deserializeState(parsed.innings1Snapshot)
         : null,
       inningsState: deserializeState(parsed.inningsState),
+      tossCompleted: parsed.tossCompleted ?? false,
+      tossBattingTeamIndex: parsed.tossBattingTeamIndex ?? 0,
     };
   } catch {
     return null;

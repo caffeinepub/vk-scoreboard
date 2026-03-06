@@ -3,17 +3,19 @@ import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useActor } from "@/hooks/useActor";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreateMatch } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
-import { Calendar, Loader2, Plus, RefreshCw, Shield } from "lucide-react";
+import { Calendar, Plus, RefreshCw, Shield } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 export function CreateMatchPage() {
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
+  const { actor, isFetching: actorLoading } = useActor();
   const createMatch = useCreateMatch();
 
   const [name, setName] = useState("");
@@ -27,6 +29,7 @@ export function CreateMatchPage() {
     maxOvers: bigint | null;
   } | null>(null);
 
+  const isConnecting = actorLoading && !actor;
   const isButtonDisabled = createMatch.isPending || !name.trim();
 
   const doSubmit = async (
@@ -78,7 +81,8 @@ export function CreateMatchPage() {
     if (!createMatch.error) return null;
     const msg =
       createMatch.error instanceof Error ? createMatch.error.message : "";
-    if (msg.includes("timed out")) return msg;
+    if (msg.includes("timed out"))
+      return "Backend connection timed out. Please refresh and try again.";
     if (msg.includes("not ready") || msg.includes("Connecting"))
       return "Still connecting to backend — please wait a moment and try again.";
     if (msg.includes("Unauthorized") || msg.includes("403"))
@@ -126,6 +130,16 @@ export function CreateMatchPage() {
         <h1 className="font-display font-black text-2xl text-foreground mb-6">
           Create New Match
         </h1>
+
+        {isConnecting && (
+          <div
+            data-ocid="create_match.loading_state"
+            className="rounded-xl border border-border/40 bg-muted/30 px-4 py-2 mb-4 text-sm text-muted-foreground flex items-center gap-2"
+          >
+            <RefreshCw className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+            Connecting to backend — you can fill the form while this loads...
+          </div>
+        )}
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
           <div
@@ -261,17 +275,8 @@ export function CreateMatchPage() {
             className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-base box-glow-green"
             data-ocid="create_match.submit_button"
           >
-            {createMatch.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Match & Setup Teams
-              </>
-            )}
+            <Plus className="w-4 h-4 mr-2" />
+            Create Match & Setup Teams
           </Button>
         </form>
       </main>
