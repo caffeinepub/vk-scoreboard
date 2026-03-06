@@ -353,23 +353,113 @@
 
 /* ─── Print styles ─── */
 @media print {
+  @page {
+    margin: 1.5cm;
+  }
+
   body {
     background: white !important;
-    color: black !important;
-    font-family: "Outfit", sans-serif;
+    color: #111 !important;
+    font-family: "Outfit", Arial, sans-serif !important;
+    font-size: 12pt !important;
   }
-  .no-print {
+
+  .no-print,
+  header,
+  footer,
+  nav,
+  .score-btn,
+  [data-ocid="scoring.back.button"],
+  [data-ocid="scoring.share.button"],
+  [data-ocid="scoring.qr.button"],
+  [data-ocid="scoring.edit_ball.button"] {
     display: none !important;
   }
+
   .print-scorecard {
     display: block !important;
   }
-  header, footer, nav, .score-btn {
-    display: none !important;
-  }
-  .pitch-bg, .pitch-texture {
+
+  /* Reset backgrounds for print */
+  .pitch-bg,
+  .pitch-texture,
+  .bg-card,
+  .bg-muted\/30,
+  .bg-muted\/20,
+  [class*="bg-"] {
     background: white !important;
     background-image: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Ensure tables render with borders */
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    page-break-inside: avoid;
+  }
+
+  th, td {
+    border: 1px solid #ccc !important;
+    padding: 4px 8px !important;
+    color: #111 !important;
+  }
+
+  th {
+    background: #f5f5f5 !important;
+    font-weight: 700 !important;
+  }
+
+  /* Keep important colors */
+  .text-neon-green,
+  .glow-green {
+    color: #16a34a !important;
+  }
+
+  .text-cricket-gold,
+  .glow-gold {
+    color: #b45309 !important;
+  }
+
+  .text-wicket-red,
+  .glow-red {
+    color: #dc2626 !important;
+  }
+
+  .text-electric-blue,
+  .glow-blue {
+    color: #2563eb !important;
+  }
+
+  /* Reset glow/shadow effects */
+  .box-glow-green,
+  .box-glow-red,
+  .box-glow-gold,
+  .box-glow-blue {
+    box-shadow: none !important;
+  }
+
+  /* Typography */
+  .font-score,
+  .font-mono {
+    font-family: "Geist Mono", monospace !important;
+  }
+
+  .font-display,
+  h1, h2, h3 {
+    font-family: "Bricolage Grotesque", Arial, sans-serif !important;
+  }
+
+  /* Borders become visible */
+  .border,
+  [class*="border-"] {
+    border-color: #ddd !important;
+  }
+
+  /* Page break hints */
+  .animate-fade-in,
+  .animate-slide-up {
+    animation: none !important;
   }
 }
 

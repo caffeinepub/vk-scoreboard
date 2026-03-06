@@ -46,6 +46,8 @@ import {
   useGetMatch,
   useRematch,
   useSaveInningsResult,
+  useSavePlayerStats,
+  useSaveTeamStats,
 } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { useNavigate, useParams } from "@tanstack/react-router";
@@ -1777,7 +1779,13 @@ export function LiveScoringPage() {
       : undefined;
 
   // Total players in batting team (for all-out detection)
-  const battingTeamIndex = inningsNumber === 1 ? 0 : 1;
+  // Uses toss result: innings1 → tossBattingTeamIndex, innings2 → swapped
+  const battingTeamIndex =
+    inningsNumber === 1
+      ? tossBattingTeamIndex
+      : tossBattingTeamIndex === 0
+        ? 1
+        : 0;
   const battingTeam = match?.teams[battingTeamIndex];
   const totalPlayers = battingTeam?.players.length;
 
@@ -1983,9 +1991,129 @@ export function LiveScoringPage() {
   const [endInningsDialogOpen, setEndInningsDialogOpen] = useState(false);
   const [showFinalResult, setShowFinalResult] = useState(false);
   const [isRematching, setIsRematching] = useState(false);
+  const [statsSaved, setStatsSaved] = useState(false);
 
   const rematchMutation = useRematch();
   const saveInningsResult = useSaveInningsResult();
+  const savePlayerStatsMutation = useSavePlayerStats();
+  const saveTeamStatsMutation = useSaveTeamStats();
+
+  // ─── Reset toss/match state when match ID changes (after rematch) ────────
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setters are stable
+  useEffect(() => {
+    setTossCompleted(false);
+    setTossBattingTeamIndex(0);
+    setShowFinalResult(false);
+    setInningsNumber(1);
+    setInnings1Snapshot(null);
+    setStatsSaved(false);
+  }, [id]);
+
+  // ─── Save player & team stats when final result is shown ─────────────────
+  // biome-ignore lint/correctness/useExhaustiveDependencies: savePlayerStatsMutation/saveTeamStatsMutation are stable mutation objects
+  useEffect(() => {
+    if (!showFinalResult || statsSaved || !match || !innings1Snapshot) return;
+    setStatsSaved(true);
+
+    const innings2 = inningsState;
+    const team1 = match.teams[0];
+    const team2 = match.teams[1];
+
+    // Determine winner
+    const team2Won =
+      innings2.autoCloseReason === "target_reached" ||
+      innings2.totalRuns > innings1Snapshot.totalRuns;
+    const isTied =
+      innings2.totalRuns === innings1Snapshot.totalRuns &&
+      innings2.autoCloseReason !== "target_reached";
+
+    // Save player stats — batting stats from innings1 (team1 batted)
+    for (const [id, stats] of innings1Snapshot.batsmanStats) {
+      void savePlayerStatsMutation
+        .mutateAsync({
+          playerId: BigInt(id),
+          matchId,
+          runs: BigInt(stats.runs),
+          balls: BigInt(stats.balls),
+          fours: BigInt(stats.fours),
+          sixes: BigInt(stats.sixes),
+          wickets: 0n,
+          oversBowled: 0n,
+          runsConceded: 0n,
+        })
+        .catch(() => {});
+    }
+    // Bowling stats from innings1 (team2 bowled)
+    for (const [id, stats] of innings1Snapshot.bowlerStats) {
+      void savePlayerStatsMutation
+        .mutateAsync({
+          playerId: BigInt(id),
+          matchId,
+          runs: 0n,
+          balls: 0n,
+          fours: 0n,
+          sixes: 0n,
+          wickets: BigInt(stats.wickets),
+          oversBowled: BigInt(stats.overs),
+          runsConceded: BigInt(stats.runs),
+        })
+        .catch(() => {});
+    }
+    // Batting stats from innings2 (team2 batted)
+    for (const [id, stats] of innings2.batsmanStats) {
+      void savePlayerStatsMutation
+        .mutateAsync({
+          playerId: BigInt(id),
+          matchId,
+          runs: BigInt(stats.runs),
+          balls: BigInt(stats.balls),
+          fours: BigInt(stats.fours),
+          sixes: BigInt(stats.sixes),
+          wickets: 0n,
+          oversBowled: 0n,
+          runsConceded: 0n,
+        })
+        .catch(() => {});
+    }
+    // Bowling stats from innings2 (team1 bowled)
+    for (const [id, stats] of innings2.bowlerStats) {
+      void savePlayerStatsMutation
+        .mutateAsync({
+          playerId: BigInt(id),
+          matchId,
+          runs: 0n,
+          balls: 0n,
+          fours: 0n,
+          sixes: 0n,
+          wickets: BigInt(stats.wickets),
+          oversBowled: BigInt(stats.overs),
+          runsConceded: BigInt(stats.runs),
+        })
+        .catch(() => {});
+    }
+
+    // Save team stats
+    if (team1) {
+      void saveTeamStatsMutation
+        .mutateAsync({
+          teamName: team1.name,
+          isWin: !team2Won && !isTied,
+          runsScored: BigInt(innings1Snapshot.totalRuns),
+          wicketsTaken: BigInt(innings2.wickets),
+        })
+        .catch(() => {});
+    }
+    if (team2) {
+      void saveTeamStatsMutation
+        .mutateAsync({
+          teamName: team2.name,
+          isWin: team2Won,
+          runsScored: BigInt(innings2.totalRuns),
+          wicketsTaken: BigInt(innings1Snapshot.wickets),
+        })
+        .catch(() => {});
+    }
+  }, [showFinalResult]);
 
   // ─── Live sync: push innings data to backend on every ball (throttled) ──────
   // This ensures viewers on the public scoreboard see live score updates.

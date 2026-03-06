@@ -34,12 +34,14 @@ function MatchHistoryCard({
   selectionMode,
   selected,
   onToggleSelect,
+  onDelete,
 }: {
   match: Match;
   index: number;
   selectionMode: boolean;
   selected: boolean;
   onToggleSelect: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const navigate = useNavigate();
   const inn1 = match.innings[0];
@@ -100,25 +102,42 @@ function MatchHistoryCard({
               )}
             </div>
           </div>
-          {match.status === "live" && (
-            <Badge className="bg-wicket-red/20 text-wicket-red border-wicket-red/40 gap-1 text-xs shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-wicket-red live-pulse inline-block" />
-              LIVE
-            </Badge>
-          )}
-          {match.status === "completed" && (
-            <Badge className="bg-neon-green/10 text-neon-green border-neon-green/20 text-xs shrink-0">
-              Done
-            </Badge>
-          )}
-          {match.status === "setup" && (
-            <Badge
-              variant="outline"
-              className="text-muted-foreground border-border/50 text-xs shrink-0"
-            >
-              Setup
-            </Badge>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {match.status === "live" && (
+              <Badge className="bg-wicket-red/20 text-wicket-red border-wicket-red/40 gap-1 text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-wicket-red live-pulse inline-block" />
+                LIVE
+              </Badge>
+            )}
+            {match.status === "completed" && (
+              <Badge className="bg-neon-green/10 text-neon-green border-neon-green/20 text-xs">
+                Done
+              </Badge>
+            )}
+            {match.status === "setup" && (
+              <Badge
+                variant="outline"
+                className="text-muted-foreground border-border/50 text-xs"
+              >
+                Setup
+              </Badge>
+            )}
+            {/* Individual delete button (only when not in selection mode) */}
+            {!selectionMode && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(match.id.toString());
+                }}
+                className="w-7 h-7 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive/70 hover:bg-destructive/20 hover:text-destructive flex items-center justify-center transition-all active:scale-95"
+                data-ocid={`history.delete_button.${index}`}
+                title="Delete match"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Teams + scores */}
@@ -197,6 +216,7 @@ export function MatchHistoryPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [_deletingId, setDeletingId] = useState<string | null>(null);
 
   const filtered = (matches ?? []).filter((m) => {
     if (filter === "all") return true;
@@ -250,6 +270,18 @@ export function MatchHistoryPage() {
       toast.error("Failed to delete some matches");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteSingle = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteMatch.mutateAsync({ matchId: BigInt(id) });
+      toast.success("Match deleted");
+    } catch {
+      toast.error("Failed to delete match");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -325,6 +357,7 @@ export function MatchHistoryPage() {
                 selectionMode={selectionMode}
                 selected={selectedIds.has(match.id.toString())}
                 onToggleSelect={toggleSelect}
+                onDelete={(mid) => void handleDeleteSingle(mid)}
               />
             ))}
           </div>

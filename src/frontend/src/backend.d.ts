@@ -15,7 +15,31 @@ export interface Player {
     jerseyNumber: bigint;
     teamId: bigint;
 }
+export interface BattingStats {
+    fours: bigint;
+    runs: bigint;
+    sixes: bigint;
+    ballsFaced: bigint;
+    isOut: boolean;
+}
 export type Time = bigint;
+export interface TeamAggregateStats {
+    totalWicketsTaken: bigint;
+    totalMatches: bigint;
+    wins: bigint;
+    losses: bigint;
+    totalRunsScored: bigint;
+}
+export interface PlayerAggregateStats {
+    totalFours: bigint;
+    totalMatches: bigint;
+    totalWickets: bigint;
+    totalRuns: bigint;
+    totalSixes: bigint;
+    totalOversBowled: bigint;
+    totalBalls: bigint;
+    totalRunsConceded: bigint;
+}
 export interface Innings {
     result?: string;
     bowlingTeamId: bigint;
@@ -29,19 +53,6 @@ export interface Innings {
     wides: bigint;
     battingTeamId: bigint;
 }
-export interface BowlingStats {
-    maidens: bigint;
-    overs: bigint;
-    runs: bigint;
-    wickets: bigint;
-}
-export interface BattingStats {
-    fours: bigint;
-    runs: bigint;
-    sixes: bigint;
-    ballsFaced: bigint;
-    isOut: boolean;
-}
 export interface Match {
     id: bigint;
     status: MatchStatus;
@@ -51,6 +62,12 @@ export interface Match {
     name: string;
     innings: Array<Innings>;
     maxOvers?: bigint;
+}
+export interface BowlingStats {
+    maidens: bigint;
+    overs: bigint;
+    runs: bigint;
+    wickets: bigint;
 }
 export interface UserProfile {
     name: string;
@@ -85,13 +102,17 @@ export interface backendInterface {
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     createMatch(name: string, date: Time, maxOvers: bigint | null): Promise<bigint>;
     deleteMatch(matchId: bigint): Promise<void>;
+    getAllTeamStats(): Promise<Array<[string, TeamAggregateStats]>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getMatch(matchId: bigint): Promise<Match>;
+    getPlayerAggregateStats(playerId: bigint): Promise<PlayerAggregateStats | null>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     listMatches(): Promise<Array<Match>>;
     rematch(matchId: bigint): Promise<bigint>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     saveInningsResult(matchId: bigint, isFirstInnings: boolean, battingTeamId: bigint, bowlingTeamId: bigint, totalRuns: bigint, wickets: bigint, legalBalls: bigint, wides: bigint, noBalls: bigint, byes: bigint, legByes: bigint, result: string | null): Promise<void>;
+    savePlayerStats(playerId: bigint, matchId: bigint, runs: bigint, balls: bigint, fours: bigint, sixes: bigint, wickets: bigint, oversBowled: bigint, runsConceded: bigint): Promise<void>;
+    saveTeamStats(teamName: string, isWin: boolean, runsScored: bigint, wicketsTaken: bigint): Promise<void>;
 }

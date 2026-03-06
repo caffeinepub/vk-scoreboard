@@ -97,7 +97,31 @@ export interface Player {
     jerseyNumber: bigint;
     teamId: bigint;
 }
+export interface BattingStats {
+    fours: bigint;
+    runs: bigint;
+    sixes: bigint;
+    ballsFaced: bigint;
+    isOut: boolean;
+}
 export type Time = bigint;
+export interface TeamAggregateStats {
+    totalWicketsTaken: bigint;
+    totalMatches: bigint;
+    wins: bigint;
+    losses: bigint;
+    totalRunsScored: bigint;
+}
+export interface PlayerAggregateStats {
+    totalFours: bigint;
+    totalMatches: bigint;
+    totalWickets: bigint;
+    totalRuns: bigint;
+    totalSixes: bigint;
+    totalOversBowled: bigint;
+    totalBalls: bigint;
+    totalRunsConceded: bigint;
+}
 export interface Innings {
     result?: string;
     bowlingTeamId: bigint;
@@ -111,19 +135,6 @@ export interface Innings {
     wides: bigint;
     battingTeamId: bigint;
 }
-export interface BowlingStats {
-    maidens: bigint;
-    overs: bigint;
-    runs: bigint;
-    wickets: bigint;
-}
-export interface BattingStats {
-    fours: bigint;
-    runs: bigint;
-    sixes: bigint;
-    ballsFaced: bigint;
-    isOut: boolean;
-}
 export interface Match {
     id: bigint;
     status: MatchStatus;
@@ -133,6 +144,12 @@ export interface Match {
     name: string;
     innings: Array<Innings>;
     maxOvers?: bigint;
+}
+export interface BowlingStats {
+    maidens: bigint;
+    overs: bigint;
+    runs: bigint;
+    wickets: bigint;
 }
 export interface UserProfile {
     name: string;
@@ -168,17 +185,21 @@ export interface backendInterface {
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     createMatch(name: string, date: Time, maxOvers: bigint | null): Promise<bigint>;
     deleteMatch(matchId: bigint): Promise<void>;
+    getAllTeamStats(): Promise<Array<[string, TeamAggregateStats]>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getMatch(matchId: bigint): Promise<Match>;
+    getPlayerAggregateStats(playerId: bigint): Promise<PlayerAggregateStats | null>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     listMatches(): Promise<Array<Match>>;
     rematch(matchId: bigint): Promise<bigint>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     saveInningsResult(matchId: bigint, isFirstInnings: boolean, battingTeamId: bigint, bowlingTeamId: bigint, totalRuns: bigint, wickets: bigint, legalBalls: bigint, wides: bigint, noBalls: bigint, byes: bigint, legByes: bigint, result: string | null): Promise<void>;
+    savePlayerStats(playerId: bigint, matchId: bigint, runs: bigint, balls: bigint, fours: bigint, sixes: bigint, wickets: bigint, oversBowled: bigint, runsConceded: bigint): Promise<void>;
+    saveTeamStats(teamName: string, isWin: boolean, runsScored: bigint, wicketsTaken: bigint): Promise<void>;
 }
-import type { Color as _Color, Innings as _Innings, Match as _Match, MatchStatus as _MatchStatus, Player as _Player, Team as _Team, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
+import type { Color as _Color, Innings as _Innings, Match as _Match, MatchStatus as _MatchStatus, Player as _Player, PlayerAggregateStats as _PlayerAggregateStats, Team as _Team, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
@@ -265,6 +286,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getAllTeamStats(): Promise<Array<[string, TeamAggregateStats]>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAllTeamStats();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAllTeamStats();
+            return result;
+        }
+    }
     async getCallerUserProfile(): Promise<UserProfile | null> {
         if (this.processError) {
             try {
@@ -307,6 +342,20 @@ export class Backend implements backendInterface {
             return from_candid_Match_n9(this._uploadFile, this._downloadFile, result);
         }
     }
+    async getPlayerAggregateStats(arg0: bigint): Promise<PlayerAggregateStats | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getPlayerAggregateStats(arg0);
+                return from_candid_opt_n23(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getPlayerAggregateStats(arg0);
+            return from_candid_opt_n23(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
         if (this.processError) {
             try {
@@ -339,14 +388,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.listMatches();
-                return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
+                return from_candid_vec_n24(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.listMatches();
-            return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
+            return from_candid_vec_n24(this._uploadFile, this._downloadFile, result);
         }
     }
     async rematch(arg0: bigint): Promise<bigint> {
@@ -380,14 +429,42 @@ export class Backend implements backendInterface {
     async saveInningsResult(arg0: bigint, arg1: boolean, arg2: bigint, arg3: bigint, arg4: bigint, arg5: bigint, arg6: bigint, arg7: bigint, arg8: bigint, arg9: bigint, arg10: bigint, arg11: string | null): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.saveInningsResult(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, to_candid_opt_n24(this._uploadFile, this._downloadFile, arg11));
+                const result = await this.actor.saveInningsResult(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, to_candid_opt_n25(this._uploadFile, this._downloadFile, arg11));
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.saveInningsResult(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, to_candid_opt_n24(this._uploadFile, this._downloadFile, arg11));
+            const result = await this.actor.saveInningsResult(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, to_candid_opt_n25(this._uploadFile, this._downloadFile, arg11));
+            return result;
+        }
+    }
+    async savePlayerStats(arg0: bigint, arg1: bigint, arg2: bigint, arg3: bigint, arg4: bigint, arg5: bigint, arg6: bigint, arg7: bigint, arg8: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.savePlayerStats(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.savePlayerStats(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+            return result;
+        }
+    }
+    async saveTeamStats(arg0: string, arg1: boolean, arg2: bigint, arg3: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveTeamStats(arg0, arg1, arg2, arg3);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveTeamStats(arg0, arg1, arg2, arg3);
             return result;
         }
     }
@@ -414,6 +491,9 @@ function from_candid_opt_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
     return value.length === 0 ? null : value[0];
 }
 function from_candid_opt_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [bigint]): bigint | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n23(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_PlayerAggregateStats]): PlayerAggregateStats | null {
     return value.length === 0 ? null : value[0];
 }
 function from_candid_opt_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
@@ -545,7 +625,7 @@ function from_candid_vec_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
 function from_candid_vec_n19(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Innings>): Array<Innings> {
     return value.map((x)=>from_candid_Innings_n20(_uploadFile, _downloadFile, x));
 }
-function from_candid_vec_n23(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Match>): Array<Match> {
+function from_candid_vec_n24(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Match>): Array<Match> {
     return value.map((x)=>from_candid_Match_n9(_uploadFile, _downloadFile, x));
 }
 function to_candid_Color_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Color): _Color {
@@ -554,7 +634,7 @@ function to_candid_Color_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Ar
 function to_candid_UserRole_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
     return to_candid_variant_n4(_uploadFile, _downloadFile, value);
 }
-function to_candid_opt_n24(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: string | null): [] | [string] {
+function to_candid_opt_n25(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: string | null): [] | [string] {
     return value === null ? candid_none() : candid_some(value);
 }
 function to_candid_opt_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: bigint | null): [] | [bigint] {

@@ -63,11 +63,28 @@ export interface Player {
   'jerseyNumber' : bigint,
   'teamId' : bigint,
 }
+export interface PlayerAggregateStats {
+  'totalFours' : bigint,
+  'totalMatches' : bigint,
+  'totalWickets' : bigint,
+  'totalRuns' : bigint,
+  'totalSixes' : bigint,
+  'totalOversBowled' : bigint,
+  'totalBalls' : bigint,
+  'totalRunsConceded' : bigint,
+}
 export interface Team {
   'id' : bigint,
   'name' : string,
   'color' : Color,
   'players' : Array<Player>,
+}
+export interface TeamAggregateStats {
+  'totalWicketsTaken' : bigint,
+  'totalMatches' : bigint,
+  'wins' : bigint,
+  'losses' : bigint,
+  'totalRunsScored' : bigint,
 }
 export type Time = bigint;
 export interface UserProfile { 'name' : string }
@@ -81,9 +98,14 @@ export interface _SERVICE {
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'createMatch' : ActorMethod<[string, Time, [] | [bigint]], bigint>,
   'deleteMatch' : ActorMethod<[bigint], undefined>,
+  'getAllTeamStats' : ActorMethod<[], Array<[string, TeamAggregateStats]>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getMatch' : ActorMethod<[bigint], Match>,
+  'getPlayerAggregateStats' : ActorMethod<
+    [bigint],
+    [] | [PlayerAggregateStats]
+  >,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'listMatches' : ActorMethod<[], Array<Match>>,
@@ -106,6 +128,11 @@ export interface _SERVICE {
     ],
     undefined
   >,
+  'savePlayerStats' : ActorMethod<
+    [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
+    undefined
+  >,
+  'saveTeamStats' : ActorMethod<[string, boolean, bigint, bigint], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

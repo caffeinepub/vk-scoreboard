@@ -115,10 +115,28 @@ actor {
     teams : [Team];
     innings : [Innings];
   };
+
   module Match {
     public func compareById(a : Match, b : Match) : Order.Order {
       Nat.compare(b.id, a.id); // To sort descending by ID (newest first)
     };
+  };
+  type PlayerAggregateStats = {
+    totalMatches : Nat;
+    totalRuns : Nat;
+    totalBalls : Nat;
+    totalFours : Nat;
+    totalSixes : Nat;
+    totalWickets : Nat;
+    totalOversBowled : Nat;
+    totalRunsConceded : Nat;
+  };
+  type TeamAggregateStats = {
+    totalMatches : Nat;
+    wins : Nat;
+    losses : Nat;
+    totalRunsScored : Nat;
+    totalWicketsTaken : Nat;
   };
 
   // State
@@ -126,10 +144,35 @@ actor {
   var nextMatchId = 1;
   var nextTeamId = 1;
   var nextPlayerId = 1;
+  let playerStatsStore = Map.empty<Nat, PlayerAggregateStats>();
+  let teamStatsStore = Map.empty<Text, TeamAggregateStats>();
 
   // Helper functions
   func findTeam(teams : [Team], teamId : Nat) : ?Team {
     teams.find(func(team) { team.id == teamId });
+  };
+
+  func mergePlayerStats(existing : PlayerAggregateStats, newStats : PlayerAggregateStats) : PlayerAggregateStats {
+    {
+      totalMatches = existing.totalMatches + newStats.totalMatches;
+      totalRuns = existing.totalRuns + newStats.totalRuns;
+      totalBalls = existing.totalBalls + newStats.totalBalls;
+      totalFours = existing.totalFours + newStats.totalFours;
+      totalSixes = existing.totalSixes + newStats.totalSixes;
+      totalWickets = existing.totalWickets + newStats.totalWickets;
+      totalOversBowled = existing.totalOversBowled + newStats.totalOversBowled;
+      totalRunsConceded = existing.totalRunsConceded + newStats.totalRunsConceded;
+    };
+  };
+
+  func mergeTeamStats(existing : TeamAggregateStats, stats : TeamAggregateStats) : TeamAggregateStats {
+    {
+      totalMatches = existing.totalMatches + stats.totalMatches;
+      wins = existing.wins + stats.wins;
+      losses = existing.losses + stats.losses;
+      totalRunsScored = existing.totalRunsScored + stats.totalRunsScored;
+      totalWicketsTaken = existing.totalWicketsTaken + stats.totalWicketsTaken;
+    };
   };
 
   // Match Management
@@ -347,5 +390,54 @@ actor {
 
   public query ({ caller }) func listMatches() : async [Match] {
     matches.values().toArray().sort(Match.compareById);
+  };
+
+  // NEW AGGREGATE STATS APIs
+  public shared ({ caller }) func savePlayerStats(playerId : Nat, matchId : Nat, runs : Nat, balls : Nat, fours : Nat, sixes : Nat, wickets : Nat, oversBowled : Nat, runsConceded : Nat) : async () {
+    let newStats : PlayerAggregateStats = {
+      totalMatches = 1;
+      totalRuns = runs;
+      totalBalls = balls;
+      totalFours = fours;
+      totalSixes = sixes;
+      totalWickets = wickets;
+      totalOversBowled = oversBowled;
+      totalRunsConceded = runsConceded;
+    };
+
+    switch (playerStatsStore.get(playerId)) {
+      case (null) {
+        playerStatsStore.add(playerId, newStats);
+      };
+      case (?existingStats) {
+        playerStatsStore.add(playerId, mergePlayerStats(existingStats, newStats));
+      };
+    };
+  };
+
+  public shared ({ caller }) func saveTeamStats(teamName : Text, isWin : Bool, runsScored : Nat, wicketsTaken : Nat) : async () {
+    let newStats : TeamAggregateStats = {
+      totalMatches = 1;
+      wins = if isWin { 1 } else { 0 };
+      losses = if isWin { 0 } else { 1 };
+      totalRunsScored = runsScored;
+      totalWicketsTaken = wicketsTaken;
+    };
+    switch (teamStatsStore.get(teamName)) {
+      case (null) {
+        teamStatsStore.add(teamName, newStats);
+      };
+      case (?existingStats) {
+        teamStatsStore.add(teamName, mergeTeamStats(existingStats, newStats));
+      };
+    };
+  };
+
+  public query ({ caller }) func getPlayerAggregateStats(playerId : Nat) : async ?PlayerAggregateStats {
+    playerStatsStore.get(playerId);
+  };
+
+  public query ({ caller }) func getAllTeamStats() : async [(Text, TeamAggregateStats)] {
+    teamStatsStore.toArray();
   };
 };

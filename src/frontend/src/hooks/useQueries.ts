@@ -192,6 +192,105 @@ export function useRematch() {
   });
 }
 
+// ─── Save player stats mutation ──────────────────────────────────────────────
+export function useSavePlayerStats() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async ({
+      playerId,
+      matchId,
+      runs,
+      balls,
+      fours,
+      sixes,
+      wickets,
+      oversBowled,
+      runsConceded,
+    }: {
+      playerId: bigint;
+      matchId: bigint;
+      runs: bigint;
+      balls: bigint;
+      fours: bigint;
+      sixes: bigint;
+      wickets: bigint;
+      oversBowled: bigint;
+      runsConceded: bigint;
+    }) => {
+      const resolvedActor = await waitForActor(() => actor);
+      await resolvedActor.savePlayerStats(
+        playerId,
+        matchId,
+        runs,
+        balls,
+        fours,
+        sixes,
+        wickets,
+        oversBowled,
+        runsConceded,
+      );
+    },
+    retry: 2,
+    retryDelay: 1500,
+  });
+}
+
+// ─── Save team stats mutation ─────────────────────────────────────────────────
+export function useSaveTeamStats() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async ({
+      teamName,
+      isWin,
+      runsScored,
+      wicketsTaken,
+    }: {
+      teamName: string;
+      isWin: boolean;
+      runsScored: bigint;
+      wicketsTaken: bigint;
+    }) => {
+      const resolvedActor = await waitForActor(() => actor);
+      await resolvedActor.saveTeamStats(
+        teamName,
+        isWin,
+        runsScored,
+        wicketsTaken,
+      );
+    },
+    retry: 2,
+    retryDelay: 1500,
+  });
+}
+
+// ─── Get player aggregate stats query ────────────────────────────────────────
+export function useGetPlayerAggregateStats(playerId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["playerStats", playerId?.toString()],
+    queryFn: async () => {
+      if (!actor || playerId === null) return null;
+      return actor.getPlayerAggregateStats(playerId);
+    },
+    enabled: !!actor && !isFetching && playerId !== null,
+    staleTime: 30_000,
+  });
+}
+
+// ─── Get all team stats query ─────────────────────────────────────────────────
+export function useGetAllTeamStats() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["teamStats"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getAllTeamStats();
+    },
+    enabled: !!actor && !isFetching,
+    staleTime: 30_000,
+  });
+}
+
 // ─── Save innings result mutation ─────────────────────────────────────────────
 export function useSaveInningsResult() {
   const { actor } = useActor();

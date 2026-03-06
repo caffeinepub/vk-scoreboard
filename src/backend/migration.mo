@@ -1,10 +1,11 @@
 import Map "mo:core/Map";
 import Nat "mo:core/Nat";
-import Principal "mo:core/Principal";
 import Time "mo:core/Time";
+import Principal "mo:core/Principal";
 
 module {
-  // Types for migration
+  // Type definitions from the old actor
+
   type DismissalType = { #bowled; #caught; #runout; #stumping; #hitwicket };
   type Color = { #red; #blue; #green; #yellow; #black; #white };
   type MatchStatus = { #setup; #live; #completed };
@@ -73,7 +74,6 @@ module {
     teams : [Team];
     innings : [Innings];
   };
-
   type UserProfile = {
     name : Text;
   };
@@ -86,8 +86,39 @@ module {
     userProfiles : Map.Map<Principal, UserProfile>;
   };
 
-  // migration function must return new state
-  public func run(old : OldActor) : OldActor {
-    old;
+  type PlayerAggregateStats = {
+    totalMatches : Nat;
+    totalRuns : Nat;
+    totalBalls : Nat;
+    totalFours : Nat;
+    totalSixes : Nat;
+    totalWickets : Nat;
+    totalOversBowled : Nat;
+    totalRunsConceded : Nat;
+  };
+  type TeamAggregateStats = {
+    totalMatches : Nat;
+    wins : Nat;
+    losses : Nat;
+    totalRunsScored : Nat;
+    totalWicketsTaken : Nat;
+  };
+
+  type NewActor = {
+    matches : Map.Map<Nat, Match>;
+    nextMatchId : Nat;
+    nextTeamId : Nat;
+    nextPlayerId : Nat;
+    userProfiles : Map.Map<Principal, UserProfile>;
+    playerStatsStore : Map.Map<Nat, PlayerAggregateStats>;
+    teamStatsStore : Map.Map<Text, TeamAggregateStats>;
+  };
+
+  public func run(old : OldActor) : NewActor {
+    {
+      old with
+      playerStatsStore = Map.empty<Nat, PlayerAggregateStats>();
+      teamStatsStore = Map.empty<Text, TeamAggregateStats>();
+    };
   };
 };

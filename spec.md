@@ -1,41 +1,39 @@
 # VK Scoreboard
 
 ## Current State
-- Full-stack cricket scoreboard app with Motoko backend and React frontend
-- Admin login via username/password (vagesh / vk888)
-- Backend has authorization checks on createMatch, addTeam, addPlayer, rematch, deleteMatch, saveInningsResult — these are causing "Authorization Failed" errors when the session token is not recognized as a "user" role
-- Match History page exists but has no bulk-delete functionality
-- Final result screen exists (FinalResultScreen component in LiveScoringPage.tsx) but has basic layout — no cricket-broadcast-style result card showing both innings lines side by side
-- Scoring buttons use `isPending` state from React Query mutations, causing loading delays
-- All scoring (run buttons, extras, wicket) goes through async mutation calls that show spinners
+
+A full-stack gully cricket scoring app with:
+- Backend: Motoko actor with `createMatch`, `addTeam`, `addPlayer`, `deleteMatch`, `rematch`, `saveInningsResult`, `getMatch`, `listMatches`
+- Frontend: React/TypeScript SPA with admin login (username/password), match creation, team setup, live ball-by-ball scoring, public scoreboard
+- Features already built: toss screen, innings tracking, over summaries, fall of wickets, ball-by-ball history, score graph, QR share, commentary, player-of-match, match highlights, match history with bulk delete, tournaments, player profiles
 
 ## Requested Changes (Diff)
 
 ### Add
-- Match History: checkbox on each match card for multi-select
-- Match History: "Delete Selected" button (visible when at least one match is selected) that deletes all checked matches and clears selection
-- Match History: "Select All" toggle for convenience
-- Enhanced FinalResultScreen: cricket-broadcast-style result card showing:
-  - Winning team name prominently at top
-  - Both innings lines: `Team A – 85/6 (8 overs)` and `Team B – 78/8 (8 overs)`
-  - Result line: `VK Warriors won by 7 runs`
-  - Rematch button prominently placed
+- Player statistics system: after each innings ends, update each player's aggregate stats (runs, balls, 4s, 6s, wickets, overs bowled, runs conceded) in the backend
+- Team statistics system: after each match completes, update team aggregate stats (matches played, wins, losses, runs scored, wickets taken)
+- Separate `savePlayerStats` and `saveTeamStats` backend APIs to persist post-match stats
+- Delete button in Match History page (per-card, not just bulk)
+- PDF download: fix the print/PDF scorecard to include full batting + bowling scorecard properly
+- System stability: ensure data is saved correctly and not lost after refresh (already handled by localStorage + backend sync, but improve rematch null-safety)
 
 ### Modify
-- Backend: remove ALL auth checks from createMatch, addTeam, addPlayer, rematch, deleteMatch, saveInningsResult — these should work for any caller, no role required
-- Scoring buttons: remove loading/pending states from run buttons (0–6), wide, no ball, bye, leg bye, wicket, and end innings — all should respond instantly with local state only; only save to backend async in background without blocking the UI
-- CreateMatchPage: remove "Connecting to backend..." / "Preparing..." spinner on the submit button — button should be enabled as long as name is filled in; backend call happens on submit without blocking label changes
-- Rematch: fix null-safety so it never crashes with "Cannot read properties of undefined (reading 'team')"
-- FinalResultScreen: replace current layout with cleaner broadcast-style result card at top, followed by a compact scorecard table showing both innings, then action buttons (Rematch + Back to Matches)
+- **Rematch fix**: The `rematch` function in backend creates new teams/players but the frontend `handleRematch` navigates to the new match's score page too fast before the match data is loaded. Add a guard — after navigating, wait for match data (team/players) before starting the toss screen. Also ensure the `battingTeamIndex` prop is propagated for the rematch SetupScreen.
+- **Auto team rotation fix**: After innings 1 ends, innings 2 should automatically show the bowling team (team 2 in toss order) as the batting team. This is already implemented via `SetupScreen`'s `battingTeamIndex` prop swap, but the `tossBattingTeamIndex` is not preserved after `handleStart2ndInnings`. Ensure `tossBattingTeamIndex` state is kept when transitioning to innings 2.
+- **PDF/Print scorecard**: The print button currently calls `window.print()`. Improve the print stylesheet so the scorecard renders clearly — include match name, both innings batting/bowling stats, extras, result.
+- **Player stats page**: Update `PlayerProfilesPage` to show aggregated stats pulled from player objects in all completed matches.
+- **Team stats**: Show team win/loss aggregates on player profiles page or a separate team stats panel.
+- **Match History delete per card**: Add individual delete button to each MatchHistoryCard (not just the bulk-select mode that already exists).
 
 ### Remove
-- Loading spinners on individual ball scoring buttons
-- "Connecting to backend..." / "Preparing..." states on Create Match submit button
-- Auth guards in backend for match mutation functions
+- Nothing removed.
 
 ## Implementation Plan
-1. **Backend fix**: Remove `AccessControl.hasPermission` checks from `createMatch`, `addTeam`, `addPlayer`, `rematch`, `deleteMatch`, `saveInningsResult` in `main.mo`
-2. **CreateMatchPage**: simplify `isButtonDisabled` to only check `!name.trim()`; remove `isPreparing` state and `showBackendBanner` logic; keep retry on error
-3. **LiveScoringPage / ScoringButtons**: make all run/extra/wicket button actions fire immediately against local state (they already do via `useCricketScoring` hook); remove any `disabled={disabled}` that ties to mutation pending state — only disable during wicket dialog open
-4. **FinalResultScreen**: redesign top card to show broadcast-style layout with both innings score lines + result text; keep Rematch button and POTM/Highlights below
-5. **MatchHistoryPage**: add `selectedIds` state (Set<string>); render checkbox on each card; show "Delete Selected (N)" action button; wire to `useDeleteMatch` mutation in a loop; add "Select All" toggle
+
+1. **Backend**: Add `savePlayerStats` and `saveTeamStats` APIs to persist aggregate player/team stats after each match. Add a `PlayerAggregateStats` and `TeamAggregateStats` type and maps.
+2. **Frontend - Rematch crash fix**: In `LiveScoringPage`, after `rematch` succeeds, navigate to the new match's toss screen. The new match will have the same teams/players. Add null-safety guards for `match.teams[0]` and `match.teams[1]` throughout.
+3. **Frontend - Team rotation**: Ensure `tossBattingTeamIndex` is properly forwarded to innings 2 setup. The `SetupScreen` already swaps batting/bowling teams for innings 2 using `propBattingTeamIndex`. Verify the value is passed correctly.
+4. **Frontend - Player stats**: After `saveInningsResult` for the 2nd innings (match complete), call `savePlayerStats` for each player with their innings stats from localStorage.
+5. **Frontend - PDF print**: Enhance the print CSS so clicking the print button produces a clean scorecard. The `FinalResultScreen` and `InningsBattingSummary` components are already rendered in `LiveScoringPage` and marked `no-print` for action buttons. Ensure print styles show full batting/bowling tables.
+6. **Frontend - History delete per card**: Add per-card delete button to `MatchHistoryCard` (inline, visible always).
+7. **Frontend - System stability**: Improve null-safety across all components that access `match.teams[index]` or `match.innings[index]`.

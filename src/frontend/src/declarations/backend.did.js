@@ -22,6 +22,13 @@ export const UserRole = IDL.Variant({
   'guest' : IDL.Null,
 });
 export const Time = IDL.Int;
+export const TeamAggregateStats = IDL.Record({
+  'totalWicketsTaken' : IDL.Nat,
+  'totalMatches' : IDL.Nat,
+  'wins' : IDL.Nat,
+  'losses' : IDL.Nat,
+  'totalRunsScored' : IDL.Nat,
+});
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
 export const MatchStatus = IDL.Variant({
   'live' : IDL.Null,
@@ -78,6 +85,16 @@ export const Match = IDL.Record({
   'innings' : IDL.Vec(Innings),
   'maxOvers' : IDL.Opt(IDL.Nat),
 });
+export const PlayerAggregateStats = IDL.Record({
+  'totalFours' : IDL.Nat,
+  'totalMatches' : IDL.Nat,
+  'totalWickets' : IDL.Nat,
+  'totalRuns' : IDL.Nat,
+  'totalSixes' : IDL.Nat,
+  'totalOversBowled' : IDL.Nat,
+  'totalBalls' : IDL.Nat,
+  'totalRunsConceded' : IDL.Nat,
+});
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
@@ -86,9 +103,19 @@ export const idlService = IDL.Service({
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
   'createMatch' : IDL.Func([IDL.Text, Time, IDL.Opt(IDL.Nat)], [IDL.Nat], []),
   'deleteMatch' : IDL.Func([IDL.Nat], [], []),
+  'getAllTeamStats' : IDL.Func(
+      [],
+      [IDL.Vec(IDL.Tuple(IDL.Text, TeamAggregateStats))],
+      ['query'],
+    ),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getMatch' : IDL.Func([IDL.Nat], [Match], ['query']),
+  'getPlayerAggregateStats' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Opt(PlayerAggregateStats)],
+      ['query'],
+    ),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
@@ -116,6 +143,22 @@ export const idlService = IDL.Service({
       [],
       [],
     ),
+  'savePlayerStats' : IDL.Func(
+      [
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+        IDL.Nat,
+      ],
+      [],
+      [],
+    ),
+  'saveTeamStats' : IDL.Func([IDL.Text, IDL.Bool, IDL.Nat, IDL.Nat], [], []),
 });
 
 export const idlInitArgs = [];
@@ -135,6 +178,13 @@ export const idlFactory = ({ IDL }) => {
     'guest' : IDL.Null,
   });
   const Time = IDL.Int;
+  const TeamAggregateStats = IDL.Record({
+    'totalWicketsTaken' : IDL.Nat,
+    'totalMatches' : IDL.Nat,
+    'wins' : IDL.Nat,
+    'losses' : IDL.Nat,
+    'totalRunsScored' : IDL.Nat,
+  });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
   const MatchStatus = IDL.Variant({
     'live' : IDL.Null,
@@ -191,6 +241,16 @@ export const idlFactory = ({ IDL }) => {
     'innings' : IDL.Vec(Innings),
     'maxOvers' : IDL.Opt(IDL.Nat),
   });
+  const PlayerAggregateStats = IDL.Record({
+    'totalFours' : IDL.Nat,
+    'totalMatches' : IDL.Nat,
+    'totalWickets' : IDL.Nat,
+    'totalRuns' : IDL.Nat,
+    'totalSixes' : IDL.Nat,
+    'totalOversBowled' : IDL.Nat,
+    'totalBalls' : IDL.Nat,
+    'totalRunsConceded' : IDL.Nat,
+  });
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
@@ -203,9 +263,19 @@ export const idlFactory = ({ IDL }) => {
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
     'createMatch' : IDL.Func([IDL.Text, Time, IDL.Opt(IDL.Nat)], [IDL.Nat], []),
     'deleteMatch' : IDL.Func([IDL.Nat], [], []),
+    'getAllTeamStats' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Text, TeamAggregateStats))],
+        ['query'],
+      ),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getMatch' : IDL.Func([IDL.Nat], [Match], ['query']),
+    'getPlayerAggregateStats' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Opt(PlayerAggregateStats)],
+        ['query'],
+      ),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],
@@ -233,6 +303,22 @@ export const idlFactory = ({ IDL }) => {
         [],
         [],
       ),
+    'savePlayerStats' : IDL.Func(
+        [
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+          IDL.Nat,
+        ],
+        [],
+        [],
+      ),
+    'saveTeamStats' : IDL.Func([IDL.Text, IDL.Bool, IDL.Nat, IDL.Nat], [], []),
   });
 };
 
