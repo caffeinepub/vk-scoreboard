@@ -6,8 +6,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { useGetAllTeamStats, useListMatches } from "@/hooks/useQueries";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronLeft, TrendingUp, Users } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { ChevronLeft, Trash2, TrendingUp, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -132,6 +133,13 @@ export function PlayerProfilesPage() {
   const { data: matches, isLoading: matchesLoading } = useListMatches();
   const { data: teamStats, isLoading: teamStatsLoading } = useGetAllTeamStats();
 
+  const [hiddenPlayerIds, setHiddenPlayerIds] = useState<Set<number>>(
+    new Set(),
+  );
+  const [hiddenTeamNames, setHiddenTeamNames] = useState<Set<string>>(
+    new Set(),
+  );
+
   useEffect(() => {
     if (!isLoggedIn) void navigate({ to: "/admin/login" });
   }, [isLoggedIn, navigate]);
@@ -255,50 +263,80 @@ export function PlayerProfilesPage() {
                         <th className="text-right px-2 py-2.5 text-xs font-semibold text-muted-foreground hidden sm:table-cell">
                           Best Bowl
                         </th>
+                        <th className="px-2 py-2.5 text-xs font-semibold text-muted-foreground">
+                          Del
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {profiles.map((profile, i) => (
-                        <tr
-                          key={profile.id}
-                          data-ocid={`players.item.${i + 1}`}
-                          className="border-b border-border/10 last:border-0 hover:bg-muted/20 transition-colors"
-                        >
-                          <td className="px-3 py-2.5 font-semibold text-foreground">
-                            {profile.name}
-                          </td>
-                          <td className="px-2 py-2.5 text-xs text-muted-foreground hidden md:table-cell">
-                            {profile.teamName}
-                          </td>
-                          <td className="text-right px-2 py-2.5 font-mono text-muted-foreground">
-                            {profile.matchesPlayed}
-                          </td>
-                          <td className="text-right px-2 py-2.5 font-mono font-bold text-foreground">
-                            {profile.totalRuns}
-                          </td>
-                          <td className="text-right px-2 py-2.5 font-mono text-electric-blue">
-                            {profile.strikeRate}
-                          </td>
-                          <td className="text-right px-2 py-2.5 font-mono text-neon-green">
-                            {profile.fours}
-                          </td>
-                          <td className="text-right px-2 py-2.5 font-mono text-cricket-gold">
-                            {profile.sixes}
-                          </td>
-                          <td className="text-right px-2 py-2.5 font-mono font-bold text-wicket-red">
-                            {profile.totalWickets}
-                          </td>
-                          <td className="text-right px-2 py-2.5 font-mono text-xs text-muted-foreground hidden sm:table-cell">
-                            {profile.bestBatting}
-                          </td>
-                          <td className="text-right px-2 py-2.5 font-mono text-xs text-muted-foreground hidden sm:table-cell">
-                            {profile.bestBowling}
-                          </td>
-                        </tr>
-                      ))}
+                      {profiles
+                        .filter((p) => !hiddenPlayerIds.has(p.id))
+                        .map((profile, i) => (
+                          <tr
+                            key={profile.id}
+                            data-ocid={`players.item.${i + 1}`}
+                            className="border-b border-border/10 last:border-0 hover:bg-muted/20 transition-colors"
+                          >
+                            <td className="px-3 py-2.5 font-semibold text-foreground">
+                              {profile.name}
+                            </td>
+                            <td className="px-2 py-2.5 text-xs text-muted-foreground hidden md:table-cell">
+                              {profile.teamName}
+                            </td>
+                            <td className="text-right px-2 py-2.5 font-mono text-muted-foreground">
+                              {profile.matchesPlayed}
+                            </td>
+                            <td className="text-right px-2 py-2.5 font-mono font-bold text-foreground">
+                              {profile.totalRuns}
+                            </td>
+                            <td className="text-right px-2 py-2.5 font-mono text-electric-blue">
+                              {profile.strikeRate}
+                            </td>
+                            <td className="text-right px-2 py-2.5 font-mono text-neon-green">
+                              {profile.fours}
+                            </td>
+                            <td className="text-right px-2 py-2.5 font-mono text-cricket-gold">
+                              {profile.sixes}
+                            </td>
+                            <td className="text-right px-2 py-2.5 font-mono font-bold text-wicket-red">
+                              {profile.totalWickets}
+                            </td>
+                            <td className="text-right px-2 py-2.5 font-mono text-xs text-muted-foreground hidden sm:table-cell">
+                              {profile.bestBatting}
+                            </td>
+                            <td className="text-right px-2 py-2.5 font-mono text-xs text-muted-foreground hidden sm:table-cell">
+                              {profile.bestBowling}
+                            </td>
+                            <td className="px-2 py-2.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setHiddenPlayerIds((prev) =>
+                                    new Set(prev).add(profile.id),
+                                  );
+                                  toast.success(
+                                    `${profile.name} removed from view`,
+                                  );
+                                }}
+                                className="text-muted-foreground hover:text-destructive transition-colors"
+                                title={`Remove ${profile.name}`}
+                                data-ocid={`players.delete_button.${i + 1}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
+                {hiddenPlayerIds.size > 0 && (
+                  <p className="px-3 py-2 text-xs text-muted-foreground bg-muted/20 border-t border-border/20">
+                    {hiddenPlayerIds.size}{" "}
+                    {hiddenPlayerIds.size === 1 ? "entry" : "entries"} hidden.
+                    Refresh page to restore.
+                  </p>
+                )}
               </div>
             )}
 
@@ -334,11 +372,15 @@ export function PlayerProfilesPage() {
                         <th className="text-right px-2 py-2.5 text-xs font-semibold text-muted-foreground hidden sm:table-cell">
                           Wkts Taken
                         </th>
+                        <th className="px-2 py-2.5 text-xs font-semibold text-muted-foreground">
+                          Del
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {teamStats
                         .sort(([, a], [, b]) => Number(b.wins) - Number(a.wins))
+                        .filter(([teamName]) => !hiddenTeamNames.has(teamName))
                         .map(([teamName, stats], i) => (
                           <tr
                             key={teamName}
@@ -363,11 +405,36 @@ export function PlayerProfilesPage() {
                             <td className="text-right px-2 py-2.5 font-mono text-electric-blue hidden sm:table-cell">
                               {Number(stats.totalWicketsTaken)}
                             </td>
+                            <td className="px-2 py-2.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setHiddenTeamNames((prev) =>
+                                    new Set(prev).add(teamName),
+                                  );
+                                  toast.success(
+                                    `${teamName} removed from view`,
+                                  );
+                                }}
+                                className="text-muted-foreground hover:text-destructive transition-colors"
+                                title={`Remove ${teamName}`}
+                                data-ocid={`team_stats.delete_button.${i + 1}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
                           </tr>
                         ))}
                     </tbody>
                   </table>
                 </div>
+                {hiddenTeamNames.size > 0 && (
+                  <p className="px-3 py-2 text-xs text-muted-foreground bg-muted/20 border-t border-border/20">
+                    {hiddenTeamNames.size}{" "}
+                    {hiddenTeamNames.size === 1 ? "entry" : "entries"} hidden.
+                    Refresh page to restore.
+                  </p>
+                )}
               </div>
             )}
           </>

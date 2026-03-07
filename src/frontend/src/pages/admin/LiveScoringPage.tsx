@@ -432,7 +432,7 @@ function OverProgress({
 interface ScoringButtonsProps {
   onRun: (n: number) => void;
   onWide: () => void;
-  onNoBall: () => void;
+  onNoBall: (runs: number) => void;
   onBye: (n: number) => void;
   onLegBye: (n: number) => void;
   onWicket: () => void;
@@ -456,6 +456,56 @@ function ScoringButtons({
 }: ScoringButtonsProps) {
   const [showByes, setShowByes] = useState(false);
   const [byeType, setByeType] = useState<"bye" | "legbye">("bye");
+  const [showNoBallPicker, setShowNoBallPicker] = useState(false);
+
+  if (showNoBallPicker) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-semibold uppercase tracking-wider text-noball-orange">
+            No Ball — Runs scored off the no-ball?
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowNoBallPicker(false)}
+            className="text-xs text-muted-foreground hover:text-foreground"
+            data-ocid="scoring.noball_back.button"
+          >
+            ← Back
+          </button>
+        </div>
+        <div className="grid grid-cols-6 gap-2">
+          {[0, 1, 2, 3, 4, 6].map((r) => (
+            <button
+              type="button"
+              key={r}
+              onClick={() => {
+                onNoBall(r);
+                setShowNoBallPicker(false);
+              }}
+              disabled={disabled}
+              className={cn(
+                "score-btn rounded-xl border font-mono font-bold text-lg transition-all active:scale-95",
+                r === 6
+                  ? "bg-cricket-gold/20 border-cricket-gold/50 text-cricket-gold hover:bg-cricket-gold/30"
+                  : r === 4
+                    ? "bg-neon-green/15 border-neon-green/40 text-neon-green hover:bg-neon-green/25"
+                    : "bg-noball-orange/10 border-noball-orange/40 text-noball-orange hover:bg-noball-orange/20",
+              )}
+              data-ocid={`scoring.noball_run_${r}.button`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground text-center pt-1">
+          Ball count will{" "}
+          <span className="text-noball-orange font-semibold">NOT</span> increase
+          · +1 no-ball penalty added automatically
+        </p>
+      </div>
+    );
+  }
 
   if (showByes) {
     return (
@@ -535,7 +585,7 @@ function ScoringButtons({
         </button>
         <button
           type="button"
-          onClick={onNoBall}
+          onClick={() => setShowNoBallPicker(true)}
           disabled={disabled}
           className="score-btn rounded-xl border border-noball-orange/40 bg-noball-orange/10 text-noball-orange hover:bg-noball-orange/20 transition-all font-semibold text-sm active:scale-95"
           data-ocid="scoring.noball.button"
@@ -1505,12 +1555,69 @@ function TossScreen({ match, onTossComplete }: TossScreenProps) {
   const team2 = match.teams[1];
   // Step 1: select toss winner. Step 2: choose bat or bowl.
   const [winningTeamIndex, setWinningTeamIndex] = useState<0 | 1 | null>(null);
+  const [flipKey, setFlipKey] = useState(1); // start at 1 so coin animates on arrival
+  const [isFlipping, setIsFlipping] = useState(false);
 
   const winningTeam =
     winningTeamIndex !== null ? (winningTeamIndex === 0 ? team1 : team2) : null;
 
+  // Auto-flip coin once on mount
+  useEffect(() => {
+    setIsFlipping(true);
+    const t = setTimeout(() => setIsFlipping(false), 1500);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleSelectWinner = (idx: 0 | 1) => {
+    setIsFlipping(true);
+    setFlipKey((k) => k + 1);
+    // Show result after animation completes
+    setTimeout(() => {
+      setIsFlipping(false);
+      setWinningTeamIndex(idx);
+    }, 1500);
+  };
+
   return (
     <div className="space-y-5 animate-fade-in" data-ocid="toss.panel">
+      <style>{`
+        @keyframes coinFlip3D {
+          0%   { transform: rotateY(0deg) scaleX(1); }
+          10%  { transform: rotateY(90deg) scaleX(0.1); }
+          20%  { transform: rotateY(180deg) scaleX(1); }
+          30%  { transform: rotateY(270deg) scaleX(0.1); }
+          40%  { transform: rotateY(360deg) scaleX(1); }
+          50%  { transform: rotateY(450deg) scaleX(0.1); }
+          60%  { transform: rotateY(540deg) scaleX(1); }
+          70%  { transform: rotateY(630deg) scaleX(0.1); }
+          85%  { transform: rotateY(720deg) scaleX(1); }
+          92%  { transform: rotateY(760deg) scaleX(0.8); }
+          100% { transform: rotateY(720deg) scaleX(1); }
+        }
+        @keyframes coinLift {
+          0%   { transform: translateY(0px); }
+          30%  { transform: translateY(-18px); }
+          70%  { transform: translateY(-12px); }
+          100% { transform: translateY(0px); }
+        }
+        @keyframes coinGlow {
+          0%   { box-shadow: 0 0 0px rgba(255,215,0,0); }
+          30%  { box-shadow: 0 0 24px rgba(255,215,0,0.7), 0 0 48px rgba(255,215,0,0.3); }
+          100% { box-shadow: 0 0 8px rgba(255,215,0,0.3); }
+        }
+        .coin-spinning {
+          animation: coinFlip3D 1.4s cubic-bezier(0.25,0.46,0.45,0.94) forwards,
+                     coinLift 1.4s ease-out forwards,
+                     coinGlow 1.4s ease-out forwards;
+        }
+        .coin-idle {
+          box-shadow: 0 0 8px rgba(255,215,0,0.3);
+          transition: box-shadow 0.3s ease;
+        }
+        .coin-idle:hover {
+          box-shadow: 0 0 18px rgba(255,215,0,0.55);
+        }
+      `}</style>
       <div className="text-center space-y-1">
         <h2 className="font-display font-bold text-xl text-foreground">
           🪙 Toss
@@ -1520,15 +1627,37 @@ function TossScreen({ match, onTossComplete }: TossScreenProps) {
         </p>
       </div>
 
-      {/* Coin icon */}
-      <div className="flex justify-center py-2">
-        <div className="w-20 h-20 rounded-full border-4 border-cricket-gold bg-cricket-gold/20 flex items-center justify-center font-display font-black text-3xl text-cricket-gold">
+      {/* Coin */}
+      <div className="flex flex-col items-center py-2 gap-2">
+        <button
+          key={flipKey}
+          type="button"
+          className={cn(
+            "w-24 h-24 rounded-full border-4 border-cricket-gold bg-gradient-to-br from-cricket-gold/40 via-cricket-gold/20 to-cricket-gold/10 flex items-center justify-center font-display font-black text-4xl text-cricket-gold select-none cursor-pointer p-0",
+            isFlipping ? "coin-spinning" : "coin-idle",
+          )}
+          onClick={() => {
+            if (!isFlipping && winningTeamIndex === null) {
+              setIsFlipping(true);
+              setFlipKey((k) => k + 1);
+              setTimeout(() => setIsFlipping(false), 1500);
+            }
+          }}
+          disabled={isFlipping || winningTeamIndex !== null}
+          title="Click to flip"
+          data-ocid="toss.coin.button"
+        >
           🪙
-        </div>
+        </button>
+        {!isFlipping && winningTeamIndex === null && (
+          <p className="text-xs text-muted-foreground animate-fade-in">
+            tap coin to flip again
+          </p>
+        )}
       </div>
 
       {/* Step 1: Select toss winner */}
-      {winningTeamIndex === null && (
+      {winningTeamIndex === null && !isFlipping && (
         <div className="space-y-3 animate-fade-in">
           <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-wider">
             Who won the toss?
@@ -1536,7 +1665,7 @@ function TossScreen({ match, onTossComplete }: TossScreenProps) {
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => setWinningTeamIndex(0)}
+              onClick={() => handleSelectWinner(0)}
               className="h-16 rounded-xl border border-cricket-gold/50 bg-cricket-gold/10 text-cricket-gold hover:bg-cricket-gold/20 font-bold text-sm transition-all active:scale-95 px-3"
               data-ocid="toss.winner_team1.button"
             >
@@ -1544,13 +1673,22 @@ function TossScreen({ match, onTossComplete }: TossScreenProps) {
             </button>
             <button
               type="button"
-              onClick={() => setWinningTeamIndex(1)}
+              onClick={() => handleSelectWinner(1)}
               className="h-16 rounded-xl border border-cricket-gold/50 bg-cricket-gold/10 text-cricket-gold hover:bg-cricket-gold/20 font-bold text-sm transition-all active:scale-95 px-3"
               data-ocid="toss.winner_team2.button"
             >
               {team2?.name ?? "Team 2"}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Flipping state message */}
+      {isFlipping && (
+        <div className="text-center animate-fade-in">
+          <p className="text-cricket-gold font-bold text-base tracking-widest animate-pulse">
+            Flipping...
+          </p>
         </div>
       )}
 
@@ -1589,7 +1727,12 @@ function TossScreen({ match, onTossComplete }: TossScreenProps) {
           </div>
           <button
             type="button"
-            onClick={() => setWinningTeamIndex(null)}
+            onClick={() => {
+              setWinningTeamIndex(null);
+              setFlipKey((k) => k + 1);
+              setIsFlipping(true);
+              setTimeout(() => setIsFlipping(false), 1500);
+            }}
             className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
             data-ocid="toss.reset.button"
           >
@@ -2811,8 +2954,8 @@ export function LiveScoringPage() {
                   scoring.recordBall({ type: "WIDE" });
                   toast(getCommentary("wide"), { icon: "🔴" });
                 }}
-                onNoBall={() => {
-                  scoring.recordBall({ type: "NO_BALL" });
+                onNoBall={(n) => {
+                  scoring.recordBall({ type: "NO_BALL", runs: n });
                   toast(getCommentary("noball"), { icon: "🔴" });
                 }}
                 onBye={(n) => scoring.recordBall({ type: "BYE", runs: n })}
