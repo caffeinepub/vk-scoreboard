@@ -30,8 +30,8 @@ export function CreateMatchPage() {
   } | null>(null);
 
   const isConnecting = actorLoading && !actor;
-  // Button is only disabled if form is empty or a call is in flight
-  const isButtonDisabled = createMatch.isPending || !name.trim();
+  // Button is only disabled if form is empty — no loading state shown
+  const isButtonDisabled = !name.trim();
 
   const doSubmit = async (
     matchName: string,

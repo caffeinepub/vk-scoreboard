@@ -1,18 +1,30 @@
 import type { Match } from "@/backend.d";
 import { AppFooter } from "@/components/AppFooter";
 import { AppHeader } from "@/components/AppHeader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useDeleteMatch, useListMatches } from "@/hooks/useQueries";
+import { clearSession } from "@/hooks/useCricketScoring";
+import { useDeleteMatch, useListMatches, useRematch } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Calendar,
   CheckSquare,
   History,
+  RefreshCw,
   Trash2,
   Trophy,
   Users,
@@ -35,6 +47,7 @@ function MatchHistoryCard({
   selected,
   onToggleSelect,
   onDelete,
+  onRematch,
 }: {
   match: Match;
   index: number;
@@ -42,6 +55,7 @@ function MatchHistoryCard({
   selected: boolean;
   onToggleSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onRematch: (id: bigint) => void;
 }) {
   const navigate = useNavigate();
   const inn1 = match.innings[0];
@@ -192,6 +206,24 @@ function MatchHistoryCard({
             <span>{match.result}</span>
           </div>
         )}
+
+        {/* Rematch button — only for completed matches */}
+        {match.status === "completed" && (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRematch(match.id);
+              }}
+              className="flex items-center gap-1.5 text-xs text-electric-blue hover:text-electric-blue/80 transition-colors"
+              data-ocid={`history.rematch_button.${index}`}
+            >
+              <RefreshCw className="w-3 h-3" />
+              Rematch
+            </button>
+          </div>
+        )}
       </button>
 
       {/* Checkbox overlay when in selection mode */}
@@ -212,11 +244,38 @@ function MatchHistoryCard({
 export function MatchHistoryPage() {
   const { data: matches, isLoading } = useListMatches();
   const deleteMatch = useDeleteMatch();
+  const rematchMutation = useRematch();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [_deletingId, setDeletingId] = useState<string | null>(null);
+  const [rematchTargetId, setRematchTargetId] = useState<bigint | null>(null);
+  const [rematchDialogOpen, setRematchDialogOpen] = useState(false);
+
+  const handleRematchConfirm = () => {
+    if (!rematchTargetId) return;
+    rematchMutation.mutate(
+      { matchId: rematchTargetId },
+      {
+        onSuccess: (newMatchId) => {
+          // IMPORTANT: Do NOT clear the old match session — previous match data stays saved
+          // Only clear the new match's potential stale session
+          clearSession(newMatchId.toString());
+          void navigate({
+            to: "/admin/match/$id/score",
+            params: { id: newMatchId.toString() },
+          });
+        },
+        onError: () => {
+          toast.error("Failed to create rematch. Please try again.");
+        },
+      },
+    );
+    setRematchDialogOpen(false);
+    setRematchTargetId(null);
+  };
 
   const filtered = (matches ?? []).filter((m) => {
     if (filter === "all") return true;
@@ -358,6 +417,10 @@ export function MatchHistoryPage() {
                 selected={selectedIds.has(match.id.toString())}
                 onToggleSelect={toggleSelect}
                 onDelete={(mid) => void handleDeleteSingle(mid)}
+                onRematch={(id) => {
+                  setRematchTargetId(id);
+                  setRematchDialogOpen(true);
+                }}
               />
             ))}
           </div>
@@ -423,6 +486,47 @@ export function MatchHistoryPage() {
           </div>
         </div>
       )}
+
+      {/* Rematch confirmation dialog */}
+      <AlertDialog
+        open={rematchDialogOpen}
+        onOpenChange={(o) => !o && setRematchDialogOpen(false)}
+      >
+        <AlertDialogContent
+          className="bg-card border-border max-w-sm"
+          data-ocid="history.rematch.dialog"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display flex items-center gap-2">
+              <RefreshCw className="w-5 h-5 text-electric-blue" />
+              Start Rematch?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              This will start a fresh match with the same teams and players. The
+              previous match result and scorecard will remain saved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              data-ocid="history.rematch.cancel_button"
+              onClick={() => {
+                setRematchDialogOpen(false);
+                setRematchTargetId(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="history.rematch.confirm_button"
+              onClick={handleRematchConfirm}
+              disabled={rematchMutation.isPending}
+              className="bg-electric-blue/20 text-electric-blue border border-electric-blue/40 hover:bg-electric-blue/30"
+            >
+              {rematchMutation.isPending ? "Creating..." : "Start Rematch"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AppFooter />
     </div>

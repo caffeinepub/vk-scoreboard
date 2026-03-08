@@ -2,38 +2,44 @@
 
 ## Current State
 
-A full-stack gully cricket scoring app with:
-- Backend: Motoko actor with `createMatch`, `addTeam`, `addPlayer`, `deleteMatch`, `rematch`, `saveInningsResult`, `getMatch`, `listMatches`
-- Frontend: React/TypeScript SPA with admin login (username/password), match creation, team setup, live ball-by-ball scoring, public scoreboard
-- Features already built: toss screen, innings tracking, over summaries, fall of wickets, ball-by-ball history, score graph, QR share, commentary, player-of-match, match highlights, match history with bulk delete, tournaments, player profiles
+- Full-featured cricket scoring app with ball-by-ball live scoring, match history, toss, innings management.
+- `useCricketScoring.ts` handles scoring reducer, plus `saveSession`/`loadSession` helpers persisting to localStorage keyed by match ID.
+- Session is saved inside a `useEffect` in `LiveScoringPage.tsx` whenever `inningsState`, `inningsNumber`, `innings1Snapshot`, `tossCompleted`, or `tossBattingTeamIndex` change.
+- The live-sync `useEffect` throttles backend pushes to max once per 5 seconds.
+- Rematch creates a new match via `useRematch()` backend call, then navigates to the new match ID.
+- `MatchHistoryPage.tsx` has a Rematch button that calls `useRematch()` — this can overwrite history of the previous match.
+- `TeamSetupPage.tsx` has a manual form for entering team name + color + players one by one. No way to reuse previously entered teams.
+- `BallPill.tsx` renders a dot ball (0 runs) as a circle with a `·` character — the dot is hard to distinguish visually in the ball-by-ball timeline.
 
 ## Requested Changes (Diff)
 
 ### Add
-- Player statistics system: after each innings ends, update each player's aggregate stats (runs, balls, 4s, 6s, wickets, overs bowled, runs conceded) in the backend
-- Team statistics system: after each match completes, update team aggregate stats (matches played, wins, losses, runs scored, wickets taken)
-- Separate `savePlayerStats` and `saveTeamStats` backend APIs to persist post-match stats
-- Delete button in Match History page (per-card, not just bulk)
-- PDF download: fix the print/PDF scorecard to include full batting + bowling scorecard properly
-- System stability: ensure data is saved correctly and not lost after refresh (already handled by localStorage + backend sync, but improve rematch null-safety)
+
+1. **Auto-save on every ball** — After every ball is recorded (`RECORD_BALL` action dispatch), immediately call `saveSession()` in addition to the existing debounced `useEffect`. The session save should happen synchronously after `dispatch` settles (via a dedicated `useEffect` on `inningsState.balls.length`). This ensures if the user leaves between balls, the session is always at the latest ball.
+
+2. **Rematch safety guard** — When Rematch is triggered from `MatchHistoryPage.tsx` (not from the final result screen), the previous match data must NOT be altered. Currently `useRematch()` on the backend creates a new match copying teams/players — that is correct. The frontend fix: confirm the rematch should clear only the NEW match's session, never the old one. Add a confirmation dialog in `MatchHistoryPage.tsx` before triggering rematch, explaining "This will start a fresh match with the same teams. The previous match result will be kept." to prevent accidental triggers. The old match's backend data stays untouched; only the new match gets a session.
+
+3. **"Use This Team" on TeamSetupPage** — In `TeamSetupPage.tsx`, above the Team Name input (when a team hasn't been added yet), show a collapsible section "Use a saved team" that lists team names from all previous matches (extracted from `useListMatches()` data). Each saved team shows a "Use This Team" button. When clicked, it pre-fills the team name field and automatically queues all that team's player names + jersey numbers for bulk-add, then shows a preview list with a single "Add Team + Players" action.
+
+4. **Green dot indicator on dot-ball pills** — In `BallPill.tsx`, for the `ball.runs === 0` case (dot ball), add a small green filled circle (`w-2 h-2 rounded-full bg-neon-green`) positioned inside the circle (centered), replacing or accompanying the `·` character, so dot balls are clearly distinguishable at a glance.
 
 ### Modify
-- **Rematch fix**: The `rematch` function in backend creates new teams/players but the frontend `handleRematch` navigates to the new match's score page too fast before the match data is loaded. Add a guard — after navigating, wait for match data (team/players) before starting the toss screen. Also ensure the `battingTeamIndex` prop is propagated for the rematch SetupScreen.
-- **Auto team rotation fix**: After innings 1 ends, innings 2 should automatically show the bowling team (team 2 in toss order) as the batting team. This is already implemented via `SetupScreen`'s `battingTeamIndex` prop swap, but the `tossBattingTeamIndex` is not preserved after `handleStart2ndInnings`. Ensure `tossBattingTeamIndex` state is kept when transitioning to innings 2.
-- **PDF/Print scorecard**: The print button currently calls `window.print()`. Improve the print stylesheet so the scorecard renders clearly — include match name, both innings batting/bowling stats, extras, result.
-- **Player stats page**: Update `PlayerProfilesPage` to show aggregated stats pulled from player objects in all completed matches.
-- **Team stats**: Show team win/loss aggregates on player profiles page or a separate team stats panel.
-- **Match History delete per card**: Add individual delete button to each MatchHistoryCard (not just the bulk-select mode that already exists).
+
+- `LiveScoringPage.tsx` — Add a focused `useEffect` on `inningsState.balls.length` that calls `saveSession` immediately (not debounced) whenever a new ball is added. The existing broader save effect is kept for toss/innings changes.
+- `BallPill.tsx` — Update the 0-runs case to render a green dot inside the circle.
+- `TeamSetupPage.tsx` — Add the "Use a saved team" section with saved team picker.
+- `MatchHistoryPage.tsx` — Add a confirmation dialog before rematch is executed (the Rematch button itself needs to be added here as it currently doesn't exist — matches link to the public scoreboard, not to a rematch action).
 
 ### Remove
-- Nothing removed.
+
+- Nothing to remove.
 
 ## Implementation Plan
 
-1. **Backend**: Add `savePlayerStats` and `saveTeamStats` APIs to persist aggregate player/team stats after each match. Add a `PlayerAggregateStats` and `TeamAggregateStats` type and maps.
-2. **Frontend - Rematch crash fix**: In `LiveScoringPage`, after `rematch` succeeds, navigate to the new match's toss screen. The new match will have the same teams/players. Add null-safety guards for `match.teams[0]` and `match.teams[1]` throughout.
-3. **Frontend - Team rotation**: Ensure `tossBattingTeamIndex` is properly forwarded to innings 2 setup. The `SetupScreen` already swaps batting/bowling teams for innings 2 using `propBattingTeamIndex`. Verify the value is passed correctly.
-4. **Frontend - Player stats**: After `saveInningsResult` for the 2nd innings (match complete), call `savePlayerStats` for each player with their innings stats from localStorage.
-5. **Frontend - PDF print**: Enhance the print CSS so clicking the print button produces a clean scorecard. The `FinalResultScreen` and `InningsBattingSummary` components are already rendered in `LiveScoringPage` and marked `no-print` for action buttons. Ensure print styles show full batting/bowling tables.
-6. **Frontend - History delete per card**: Add per-card delete button to `MatchHistoryCard` (inline, visible always).
-7. **Frontend - System stability**: Improve null-safety across all components that access `match.teams[index]` or `match.innings[index]`.
+1. **BallPill.tsx** — Replace the `·` text with a small green dot (`w-2 h-2 bg-neon-green rounded-full`) inside the dot-ball circle. Keep the circle's muted styling.
+
+2. **LiveScoringPage.tsx (auto-save on every ball)** — Add a `useEffect` that depends on `[inningsState.balls.length]` and calls `saveSession(id, { inningsNumber, innings1Snapshot, inningsState, tossCompleted, tossBattingTeamIndex })` immediately whenever the balls array length changes. Guard it with `sessionLoaded && !isResettingRef.current` to avoid saves during reset.
+
+3. **MatchHistoryPage.tsx (Rematch button + confirmation)** — Add a Rematch button to `MatchHistoryCard` for completed matches. Wire it to a confirmation `AlertDialog` ("Start a fresh rematch? The previous match result will remain saved."). On confirm, call `useRematch()` and navigate to the new match's scoring page. The old match's session in localStorage is NOT cleared.
+
+4. **TeamSetupPage.tsx ("Use This Team")** — In `TeamSection`, import `useListMatches`. When no team has been added yet, show a "Use a saved team" accordion below the team name input. It lists unique team names from all matches that have at least 1 player. Clicking a team name pre-fills `teamName` and sets a `pendingPlayers` list. After the team is created, automatically fire `addPlayer` mutations for each pending player. Show a small player count badge next to each saved team name.

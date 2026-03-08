@@ -1,5 +1,5 @@
 import { Color } from "@/backend.d";
-import type { Team } from "@/backend.d";
+import type { Match, Team } from "@/backend.d";
 import { AppFooter } from "@/components/AppFooter";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,24 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
-import { useAddPlayer, useAddTeam, useGetMatch } from "@/hooks/useQueries";
+import {
+  useAddPlayer,
+  useAddTeam,
+  useGetMatch,
+  useListMatches,
+} from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { CheckCircle, Hash, Play, Plus, Users } from "lucide-react";
-import { useState } from "react";
+import {
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Hash,
+  Play,
+  Plus,
+  Users,
+} from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const COLOR_OPTIONS = [
@@ -38,10 +51,12 @@ function TeamSection({
   matchId,
   teamSlot,
   existingTeam,
+  allMatches,
 }: {
   matchId: bigint;
   teamSlot: 1 | 2;
   existingTeam: Team | undefined;
+  allMatches?: Match[];
 }) {
   const addTeamMutation = useAddTeam();
   const addPlayerMutation = useAddPlayer();
@@ -52,18 +67,66 @@ function TeamSection({
   );
   const [playerName, setPlayerName] = useState("");
   const [jerseyNum, setJerseyNum] = useState("");
+  const [showSavedTeams, setShowSavedTeams] = useState(false);
+  const [pendingPlayers, setPendingPlayers] = useState<
+    Array<{ name: string; jerseyNumber: bigint }>
+  >([]);
+
+  // Build list of unique saved teams from match history
+  const savedTeams = useMemo(() => {
+    if (!allMatches) return [];
+    const seen = new Set<string>();
+    const teams: Array<{
+      name: string;
+      players: Array<{ name: string; jerseyNumber: bigint }>;
+    }> = [];
+    for (const match of allMatches) {
+      for (const team of match.teams) {
+        if (!seen.has(team.name) && team.players.length > 0) {
+          seen.add(team.name);
+          teams.push({
+            name: team.name,
+            players: team.players.map((p) => ({
+              name: p.name,
+              jerseyNumber: p.jerseyNumber,
+            })),
+          });
+        }
+      }
+    }
+    return teams;
+  }, [allMatches]);
 
   const handleAddTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!teamName.trim()) return;
     try {
-      await addTeamMutation.mutateAsync({
+      const newTeamId = await addTeamMutation.mutateAsync({
         matchId,
         teamName: teamName.trim(),
         color: teamColor,
       });
       toast.success(`${teamName} added!`);
       setTeamName("");
+
+      // Auto-add pending players if any
+      if (pendingPlayers.length > 0 && newTeamId) {
+        const playersToAdd = [...pendingPlayers];
+        setPendingPlayers([]);
+        for (const p of playersToAdd) {
+          try {
+            await addPlayerMutation.mutateAsync({
+              matchId,
+              teamId: newTeamId,
+              playerName: p.name,
+              jerseyNumber: p.jerseyNumber,
+            });
+          } catch {
+            // ignore individual player failures silently
+          }
+        }
+        toast.success(`${playersToAdd.length} players added from saved team!`);
+      }
     } catch (_err) {
       toast.error("Failed to add team");
     }
@@ -116,6 +179,49 @@ function TeamSection({
             className="space-y-3"
             data-ocid={`setup.team${teamSlot}.form`}
           >
+            {/* Use a saved team section */}
+            {savedTeams.length > 0 && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSavedTeams(!showSavedTeams)}
+                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors font-medium"
+                  data-ocid={`setup.team${teamSlot}.use_saved.toggle`}
+                >
+                  {showSavedTeams ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                  Use a saved team ({savedTeams.length})
+                </button>
+                {showSavedTeams && (
+                  <div className="space-y-1.5 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    {savedTeams.map((t) => (
+                      <button
+                        key={t.name}
+                        type="button"
+                        onClick={() => {
+                          setTeamName(t.name);
+                          setPendingPlayers(t.players);
+                          setShowSavedTeams(false);
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border/40 bg-card hover:border-primary/40 hover:bg-primary/10 transition-all text-left"
+                        data-ocid={`setup.team${teamSlot}.saved_team.button`}
+                      >
+                        <span className="font-semibold text-foreground text-sm">
+                          {t.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {t.players.length} players
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">
                 Team Name *
@@ -129,6 +235,35 @@ function TeamSection({
                 data-ocid={`setup.team${teamSlot}.name.input`}
               />
             </div>
+
+            {/* Pending players preview */}
+            {pendingPlayers.length > 0 && (
+              <div className="rounded-lg border border-neon-green/20 bg-neon-green/5 p-3 space-y-2">
+                <div className="text-xs font-semibold text-neon-green uppercase tracking-wide">
+                  {pendingPlayers.length} players will be added
+                </div>
+                <div className="space-y-1">
+                  {pendingPlayers.map((p) => (
+                    <div
+                      key={`${p.name}-${p.jerseyNumber.toString()}`}
+                      className="flex items-center gap-2 text-xs text-foreground/80"
+                    >
+                      <span className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-mono text-primary shrink-0">
+                        {p.jerseyNumber.toString()}
+                      </span>
+                      {p.name}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingPlayers([])}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Clear players
+                </button>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">
@@ -169,7 +304,7 @@ function TeamSection({
 
             <Button
               type="submit"
-              disabled={addTeamMutation.isPending || !teamName.trim()}
+              disabled={!teamName.trim()}
               className="w-full h-11 bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
               data-ocid={`setup.team${teamSlot}.add.button`}
             >
@@ -245,7 +380,7 @@ function TeamSection({
                 </div>
                 <Button
                   type="submit"
-                  disabled={addPlayerMutation.isPending || !playerName.trim()}
+                  disabled={!playerName.trim()}
                   size="sm"
                   className="h-10 px-3 bg-primary text-primary-foreground hover:bg-primary/90"
                   data-ocid={`setup.team${teamSlot}.add_player.button`}
@@ -268,6 +403,8 @@ export function TeamSetupPage() {
   const { isLoggedIn } = useAuth();
   // Poll every 3s on team setup so the page picks up freshly-created match data
   const { data: match, isLoading } = useGetMatch(matchId, 3000);
+  // Load all matches to derive saved teams for "Use This Team" feature
+  const { data: allMatches } = useListMatches();
 
   if (!isLoggedIn) {
     return (
@@ -323,8 +460,18 @@ export function TeamSetupPage() {
           </div>
         ) : match ? (
           <div className="space-y-4">
-            <TeamSection matchId={matchId} teamSlot={1} existingTeam={team1} />
-            <TeamSection matchId={matchId} teamSlot={2} existingTeam={team2} />
+            <TeamSection
+              matchId={matchId}
+              teamSlot={1}
+              existingTeam={team1}
+              allMatches={allMatches}
+            />
+            <TeamSection
+              matchId={matchId}
+              teamSlot={2}
+              existingTeam={team2}
+              allMatches={allMatches}
+            />
 
             {/* Start match */}
             <div className="rounded-xl border border-border/40 bg-card p-4 space-y-3">

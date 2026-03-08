@@ -7,10 +7,15 @@ import { useActor } from "./useActor";
 // ─── Helper: wait for actor to be ready ──────────────────────────────────────
 async function waitForActor(
   getActor: () => backendInterface | null,
+  triggerRefetch: (() => void) | null = null,
   timeoutMs = 20000,
   intervalMs = 200,
 ): Promise<backendInterface> {
   const deadline = Date.now() + timeoutMs;
+  // Trigger a refetch immediately if actor is null (e.g. after IC0508 error)
+  if (!getActor() && triggerRefetch) {
+    triggerRefetch();
+  }
   while (Date.now() < deadline) {
     const a = getActor();
     if (a) return a;
@@ -34,13 +39,21 @@ function isAuthError(err: unknown): boolean {
 // This solves the stale closure problem in useMutation callbacks.
 function useActorRef() {
   const { actor, isFetching } = useActor();
+  const queryClient = useQueryClient();
   const actorRef = useRef<backendInterface | null>(null);
   useEffect(() => {
     actorRef.current = actor;
   }, [actor]);
   // Also sync immediately (effect runs after render, so prime it synchronously)
   actorRef.current = actor;
-  return { actorRef, actor, isFetching };
+
+  // Trigger a refetch of the actor query — used to recover from IC0508 errors
+  const triggerActorRefetch = () => {
+    void queryClient.invalidateQueries({ queryKey: ["actor"] });
+    void queryClient.refetchQueries({ queryKey: ["actor"] });
+  };
+
+  return { actorRef, actor, isFetching, triggerActorRefetch };
 }
 
 // ─── List all matches ─────────────────────────────────────────────────────────
@@ -87,7 +100,7 @@ export function useIsAdmin() {
 
 // ─── Create match mutation ────────────────────────────────────────────────────
 export function useCreateMatch() {
-  const { actorRef } = useActorRef();
+  const { actorRef, triggerActorRefetch } = useActorRef();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -99,7 +112,10 @@ export function useCreateMatch() {
       date: bigint;
       maxOvers: bigint | null;
     }) => {
-      const resolvedActor = await waitForActor(() => actorRef.current);
+      const resolvedActor = await waitForActor(
+        () => actorRef.current,
+        triggerActorRefetch,
+      );
       try {
         return await resolvedActor.createMatch(name, date, maxOvers);
       } catch (err) {
@@ -107,6 +123,11 @@ export function useCreateMatch() {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("Unauthorized") || msg.includes("403")) {
           throw new Error("Unauthorized: Please log out and back in.");
+        }
+        if (msg.includes("IC0508") || msg.includes("stopped")) {
+          throw new Error(
+            "Canister is temporarily unavailable. Please try again in a moment.",
+          );
         }
         throw new Error(`Failed to create match: ${msg}`);
       }
@@ -121,7 +142,7 @@ export function useCreateMatch() {
 
 // ─── Add team mutation ────────────────────────────────────────────────────────
 export function useAddTeam() {
-  const { actorRef } = useActorRef();
+  const { actorRef, triggerActorRefetch } = useActorRef();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -133,7 +154,10 @@ export function useAddTeam() {
       teamName: string;
       color: Color;
     }) => {
-      const resolvedActor = await waitForActor(() => actorRef.current);
+      const resolvedActor = await waitForActor(
+        () => actorRef.current,
+        triggerActorRefetch,
+      );
       return resolvedActor.addTeam(matchId, teamName, color);
     },
     retry: 2,
@@ -149,7 +173,7 @@ export function useAddTeam() {
 
 // ─── Add player mutation ──────────────────────────────────────────────────────
 export function useAddPlayer() {
-  const { actorRef } = useActorRef();
+  const { actorRef, triggerActorRefetch } = useActorRef();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -163,7 +187,10 @@ export function useAddPlayer() {
       playerName: string;
       jerseyNumber: bigint;
     }) => {
-      const resolvedActor = await waitForActor(() => actorRef.current);
+      const resolvedActor = await waitForActor(
+        () => actorRef.current,
+        triggerActorRefetch,
+      );
       return resolvedActor.addPlayer(matchId, teamId, playerName, jerseyNumber);
     },
     retry: 2,
@@ -178,12 +205,15 @@ export function useAddPlayer() {
 
 // ─── Delete match mutation ────────────────────────────────────────────────────
 export function useDeleteMatch() {
-  const { actorRef } = useActorRef();
+  const { actorRef, triggerActorRefetch } = useActorRef();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ matchId }: { matchId: bigint }) => {
       try {
-        const resolvedActor = await waitForActor(() => actorRef.current);
+        const resolvedActor = await waitForActor(
+          () => actorRef.current,
+          triggerActorRefetch,
+        );
         await resolvedActor.deleteMatch(matchId);
       } catch (err) {
         if (isAuthError(err)) return; // fail silently on auth errors
@@ -198,11 +228,14 @@ export function useDeleteMatch() {
 
 // ─── Rematch mutation ─────────────────────────────────────────────────────────
 export function useRematch() {
-  const { actorRef } = useActorRef();
+  const { actorRef, triggerActorRefetch } = useActorRef();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ matchId }: { matchId: bigint }): Promise<bigint> => {
-      const resolvedActor = await waitForActor(() => actorRef.current);
+      const resolvedActor = await waitForActor(
+        () => actorRef.current,
+        triggerActorRefetch,
+      );
       return await resolvedActor.rematch(matchId);
     },
     retry: false,
@@ -214,7 +247,7 @@ export function useRematch() {
 
 // ─── Save player stats mutation ──────────────────────────────────────────────
 export function useSavePlayerStats() {
-  const { actorRef } = useActorRef();
+  const { actorRef, triggerActorRefetch } = useActorRef();
   return useMutation({
     mutationFn: async ({
       playerId,
@@ -237,7 +270,10 @@ export function useSavePlayerStats() {
       oversBowled: bigint;
       runsConceded: bigint;
     }) => {
-      const resolvedActor = await waitForActor(() => actorRef.current);
+      const resolvedActor = await waitForActor(
+        () => actorRef.current,
+        triggerActorRefetch,
+      );
       await resolvedActor.savePlayerStats(
         playerId,
         matchId,
@@ -256,7 +292,7 @@ export function useSavePlayerStats() {
 
 // ─── Save team stats mutation ─────────────────────────────────────────────────
 export function useSaveTeamStats() {
-  const { actorRef } = useActorRef();
+  const { actorRef, triggerActorRefetch } = useActorRef();
   return useMutation({
     mutationFn: async ({
       teamName,
@@ -269,7 +305,10 @@ export function useSaveTeamStats() {
       runsScored: bigint;
       wicketsTaken: bigint;
     }) => {
-      const resolvedActor = await waitForActor(() => actorRef.current);
+      const resolvedActor = await waitForActor(
+        () => actorRef.current,
+        triggerActorRefetch,
+      );
       await resolvedActor.saveTeamStats(
         teamName,
         isWin,
@@ -311,7 +350,7 @@ export function useGetAllTeamStats() {
 
 // ─── Save innings result mutation ─────────────────────────────────────────────
 export function useSaveInningsResult() {
-  const { actorRef } = useActorRef();
+  const { actorRef, triggerActorRefetch } = useActorRef();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -342,7 +381,10 @@ export function useSaveInningsResult() {
       result: string | null;
     }) => {
       try {
-        const resolvedActor = await waitForActor(() => actorRef.current);
+        const resolvedActor = await waitForActor(
+          () => actorRef.current,
+          triggerActorRefetch,
+        );
         await resolvedActor.saveInningsResult(
           matchId,
           isFirstInnings,

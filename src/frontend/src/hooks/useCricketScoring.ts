@@ -127,6 +127,8 @@ export type ScoringAction =
   | { type: "CLOSE_INNINGS"; reason?: AutoCloseReason }
   | { type: "RESET_INNINGS" }
   | { type: "EDIT_BALL"; index: number; ball: Partial<LocalBall> }
+  | { type: "SWAP_BATSMEN" }
+  | { type: "SWAP_BOWLER"; newBowlerId: number }
   | { type: "UNDO" };
 
 // ─── Initial State ────────────────────────────────────────────────────────────
@@ -425,6 +427,29 @@ function scoringReducer(
       const newBalls = [...state.balls];
       newBalls[action.index] = { ...newBalls[action.index], ...action.ball };
       return rebuildStateFromBalls(newBalls, state);
+    }
+
+    case "SWAP_BATSMEN": {
+      if (state.status !== "active") return state;
+      if (state.strikerId === null || state.nonStrikerId === null) return state;
+      return {
+        ...state,
+        strikerId: state.nonStrikerId,
+        nonStrikerId: state.strikerId,
+      };
+    }
+
+    case "SWAP_BOWLER": {
+      if (state.status !== "active") return state;
+      const newBowlerId = action.newBowlerId;
+      const newBowlerStats = getOrCreateBowler(state.bowlerStats, newBowlerId);
+      const updatedBowlerStats = cloneMap(state.bowlerStats);
+      updatedBowlerStats.set(newBowlerId, newBowlerStats);
+      return {
+        ...state,
+        bowlerId: newBowlerId,
+        bowlerStats: updatedBowlerStats,
+      };
     }
 
     default:
@@ -887,6 +912,14 @@ export function useCricketScoring(options: CricketScoringOptions = {}) {
     dispatch({ type: "EDIT_BALL", index, ball });
   }, []);
 
+  const swapBatsmen = useCallback(() => {
+    dispatch({ type: "SWAP_BATSMEN" });
+  }, []);
+
+  const swapBowler = useCallback((newBowlerId: number) => {
+    dispatch({ type: "SWAP_BOWLER", newBowlerId });
+  }, []);
+
   // ─── Computed helpers ──────────────────────────────────────────────────────
 
   const currentRunRate = (() => {
@@ -923,6 +956,8 @@ export function useCricketScoring(options: CricketScoringOptions = {}) {
     closeInnings,
     resetInnings,
     editBall,
+    swapBatsmen,
+    swapBowler,
     currentRunRate,
     oversString,
     currentOverBalls,

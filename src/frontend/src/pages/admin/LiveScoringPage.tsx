@@ -1553,74 +1553,87 @@ interface TossScreenProps {
 function TossScreen({ match, onTossComplete }: TossScreenProps) {
   const team1 = match.teams[0];
   const team2 = match.teams[1];
-  // Step 1: select toss winner. Step 2: choose bat or bowl.
-  const [winningTeamIndex, setWinningTeamIndex] = useState<0 | 1 | null>(null);
-  const [flipKey, setFlipKey] = useState(1); // start at 1 so coin animates on arrival
+
+  const [flipKey, setFlipKey] = useState(0);
   const [isFlipping, setIsFlipping] = useState(false);
+  const [winningTeamIndex, setWinningTeamIndex] = useState<0 | 1 | null>(null);
+  // Stores the committed random winner for the current flip cycle
+  const pendingWinnerRef = useRef<0 | 1>(0);
 
   const winningTeam =
     winningTeamIndex !== null ? (winningTeamIndex === 0 ? team1 : team2) : null;
 
-  // Auto-flip coin once on mount
-  useEffect(() => {
+  const doFlip = useCallback(() => {
+    if (isFlipping) return;
+    // Commit the random result at the START of the flip so it is truly random
+    // and not influenced by any timing artifact
+    pendingWinnerRef.current = Math.random() < 0.5 ? 0 : 1;
     setIsFlipping(true);
-    const t = setTimeout(() => setIsFlipping(false), 1500);
+    setWinningTeamIndex(null);
+    setFlipKey((k) => k + 1);
+    // Reveal winner after animation (1800ms = 6 full rotations)
+    setTimeout(() => {
+      setWinningTeamIndex(pendingWinnerRef.current);
+      setIsFlipping(false);
+    }, 1900);
+  }, [isFlipping]);
+
+  // Auto-flip on mount — intentionally run only once
+  // biome-ignore lint/correctness/useExhaustiveDependencies: doFlip intentionally excluded — we only want to flip once on mount
+  useEffect(() => {
+    const t = setTimeout(() => doFlip(), 400);
     return () => clearTimeout(t);
   }, []);
-
-  const handleSelectWinner = (idx: 0 | 1) => {
-    setIsFlipping(true);
-    setFlipKey((k) => k + 1);
-    // Show result after animation completes
-    setTimeout(() => {
-      setIsFlipping(false);
-      setWinningTeamIndex(idx);
-    }, 1500);
-  };
 
   return (
     <div className="space-y-5 animate-fade-in" data-ocid="toss.panel">
       <style>{`
-        @keyframes coinFlip3D {
-          0%   { transform: rotateY(0deg) scaleX(1); }
-          10%  { transform: rotateY(90deg) scaleX(0.1); }
-          20%  { transform: rotateY(180deg) scaleX(1); }
-          30%  { transform: rotateY(270deg) scaleX(0.1); }
-          40%  { transform: rotateY(360deg) scaleX(1); }
-          50%  { transform: rotateY(450deg) scaleX(0.1); }
-          60%  { transform: rotateY(540deg) scaleX(1); }
-          70%  { transform: rotateY(630deg) scaleX(0.1); }
-          85%  { transform: rotateY(720deg) scaleX(1); }
-          92%  { transform: rotateY(760deg) scaleX(0.8); }
-          100% { transform: rotateY(720deg) scaleX(1); }
+        @keyframes coinSpin {
+          0%   { transform: translateY(0px) rotateY(0deg) scaleX(1); }
+          5%   { transform: translateY(-22px) rotateY(90deg) scaleX(0.08); }
+          10%  { transform: translateY(-30px) rotateY(180deg) scaleX(1); }
+          15%  { transform: translateY(-28px) rotateY(270deg) scaleX(0.08); }
+          20%  { transform: translateY(-24px) rotateY(360deg) scaleX(1); }
+          25%  { transform: translateY(-20px) rotateY(450deg) scaleX(0.08); }
+          30%  { transform: translateY(-16px) rotateY(540deg) scaleX(1); }
+          35%  { transform: translateY(-12px) rotateY(630deg) scaleX(0.08); }
+          40%  { transform: translateY(-8px) rotateY(720deg) scaleX(1); }
+          50%  { transform: translateY(-4px) rotateY(810deg) scaleX(0.08); }
+          60%  { transform: translateY(-2px) rotateY(900deg) scaleX(1); }
+          70%  { transform: translateY(-1px) rotateY(990deg) scaleX(0.2); }
+          80%  { transform: translateY(0px) rotateY(1080deg) scaleX(1); }
+          90%  { transform: translateY(0px) rotateY(1100deg) scaleX(0.85); }
+          95%  { transform: translateY(0px) rotateY(1080deg) scaleX(1); }
+          100% { transform: translateY(0px) rotateY(1080deg) scaleX(1); }
         }
-        @keyframes coinLift {
-          0%   { transform: translateY(0px); }
-          30%  { transform: translateY(-18px); }
-          70%  { transform: translateY(-12px); }
-          100% { transform: translateY(0px); }
-        }
-        @keyframes coinGlow {
-          0%   { box-shadow: 0 0 0px rgba(255,215,0,0); }
-          30%  { box-shadow: 0 0 24px rgba(255,215,0,0.7), 0 0 48px rgba(255,215,0,0.3); }
-          100% { box-shadow: 0 0 8px rgba(255,215,0,0.3); }
+        @keyframes coinGlowSpin {
+          0%   { box-shadow: 0 0 6px rgba(255,215,0,0.2); }
+          20%  { box-shadow: 0 0 32px rgba(255,215,0,0.9), 0 0 60px rgba(255,215,0,0.4), 0 4px 20px rgba(0,0,0,0.4); }
+          60%  { box-shadow: 0 0 20px rgba(255,215,0,0.6), 0 0 40px rgba(255,215,0,0.2); }
+          100% { box-shadow: 0 0 12px rgba(255,215,0,0.45); }
         }
         .coin-spinning {
-          animation: coinFlip3D 1.4s cubic-bezier(0.25,0.46,0.45,0.94) forwards,
-                     coinLift 1.4s ease-out forwards,
-                     coinGlow 1.4s ease-out forwards;
+          animation:
+            coinSpin 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+            coinGlowSpin 1.8s ease-out forwards;
         }
         .coin-idle {
-          box-shadow: 0 0 8px rgba(255,215,0,0.3);
-          transition: box-shadow 0.3s ease;
+          box-shadow: 0 0 10px rgba(255,215,0,0.35);
+          transition: box-shadow 0.3s ease, transform 0.2s ease;
         }
         .coin-idle:hover {
-          box-shadow: 0 0 18px rgba(255,215,0,0.55);
+          box-shadow: 0 0 22px rgba(255,215,0,0.65);
+          transform: scale(1.06);
+        }
+        .coin-winner {
+          box-shadow: 0 0 28px rgba(255,215,0,0.8), 0 0 56px rgba(255,215,0,0.35);
+          animation: coinGlowSpin 0.6s ease-out forwards;
         }
       `}</style>
+
       <div className="text-center space-y-1">
         <h2 className="font-display font-bold text-xl text-foreground">
-          🪙 Toss
+          🪙 Coin Toss
         </h2>
         <p className="text-sm text-muted-foreground">
           {team1?.name ?? "Team 1"} vs {team2?.name ?? "Team 2"}
@@ -1628,76 +1641,51 @@ function TossScreen({ match, onTossComplete }: TossScreenProps) {
       </div>
 
       {/* Coin */}
-      <div className="flex flex-col items-center py-2 gap-2">
-        <button
-          key={flipKey}
-          type="button"
-          className={cn(
-            "w-24 h-24 rounded-full border-4 border-cricket-gold bg-gradient-to-br from-cricket-gold/40 via-cricket-gold/20 to-cricket-gold/10 flex items-center justify-center font-display font-black text-4xl text-cricket-gold select-none cursor-pointer p-0",
-            isFlipping ? "coin-spinning" : "coin-idle",
-          )}
-          onClick={() => {
-            if (!isFlipping && winningTeamIndex === null) {
-              setIsFlipping(true);
-              setFlipKey((k) => k + 1);
-              setTimeout(() => setIsFlipping(false), 1500);
-            }
-          }}
-          disabled={isFlipping || winningTeamIndex !== null}
-          title="Click to flip"
-          data-ocid="toss.coin.button"
-        >
-          🪙
-        </button>
+      <div className="flex flex-col items-center py-4 gap-4">
+        <div className="relative">
+          <button
+            key={flipKey}
+            type="button"
+            className={cn(
+              "w-28 h-28 rounded-full border-4 border-cricket-gold bg-gradient-to-br from-cricket-gold/50 via-cricket-gold/25 to-cricket-gold/10 flex items-center justify-center font-display font-black text-5xl text-cricket-gold select-none p-0 relative overflow-hidden",
+              isFlipping
+                ? "coin-spinning cursor-not-allowed"
+                : winningTeamIndex !== null
+                  ? "coin-winner cursor-pointer"
+                  : "coin-idle cursor-pointer",
+            )}
+            onClick={doFlip}
+            disabled={isFlipping}
+            title="Tap to flip again"
+            data-ocid="toss.coin.button"
+          >
+            🪙
+          </button>
+        </div>
+
+        {isFlipping && (
+          <p className="text-cricket-gold font-bold text-sm tracking-widest animate-pulse">
+            Spinning...
+          </p>
+        )}
         {!isFlipping && winningTeamIndex === null && (
-          <p className="text-xs text-muted-foreground animate-fade-in">
-            tap coin to flip again
+          <p className="text-xs text-muted-foreground animate-pulse">
+            Preparing toss...
+          </p>
+        )}
+        {!isFlipping && winningTeamIndex !== null && (
+          <p className="text-xs text-muted-foreground/70">
+            Tap coin to flip again
           </p>
         )}
       </div>
 
-      {/* Step 1: Select toss winner */}
-      {winningTeamIndex === null && !isFlipping && (
-        <div className="space-y-3 animate-fade-in">
-          <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Who won the toss?
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleSelectWinner(0)}
-              className="h-16 rounded-xl border border-cricket-gold/50 bg-cricket-gold/10 text-cricket-gold hover:bg-cricket-gold/20 font-bold text-sm transition-all active:scale-95 px-3"
-              data-ocid="toss.winner_team1.button"
-            >
-              {team1?.name ?? "Team 1"}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectWinner(1)}
-              className="h-16 rounded-xl border border-cricket-gold/50 bg-cricket-gold/10 text-cricket-gold hover:bg-cricket-gold/20 font-bold text-sm transition-all active:scale-95 px-3"
-              data-ocid="toss.winner_team2.button"
-            >
-              {team2?.name ?? "Team 2"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Flipping state message */}
-      {isFlipping && (
-        <div className="text-center animate-fade-in">
-          <p className="text-cricket-gold font-bold text-base tracking-widest animate-pulse">
-            Flipping...
-          </p>
-        </div>
-      )}
-
-      {/* Step 2: Bat or Bowl decision */}
-      {winningTeamIndex !== null && winningTeam && (
+      {/* Result: winner chosen by random flip — show bat/bowl choice */}
+      {!isFlipping && winningTeamIndex !== null && winningTeam && (
         <div className="space-y-4 animate-fade-in">
           <div className="rounded-2xl border border-cricket-gold/40 bg-cricket-gold/10 p-4 text-center space-y-1">
             <div className="text-lg font-bold text-cricket-gold">
-              {winningTeam.name} won the toss.
+              🎉 {winningTeam.name} won the toss!
             </div>
             <p className="text-sm text-muted-foreground">
               Choose to bat or bowl first:
@@ -1727,16 +1715,11 @@ function TossScreen({ match, onTossComplete }: TossScreenProps) {
           </div>
           <button
             type="button"
-            onClick={() => {
-              setWinningTeamIndex(null);
-              setFlipKey((k) => k + 1);
-              setIsFlipping(true);
-              setTimeout(() => setIsFlipping(false), 1500);
-            }}
-            className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={doFlip}
+            className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
             data-ocid="toss.reset.button"
           >
-            ↩ Change toss winner
+            ↩ Flip again
           </button>
         </div>
       )}
@@ -1957,7 +1940,12 @@ export function LiveScoringPage() {
     currentOverBalls,
     requiredRuns,
     requiredBalls,
+    swapBatsmen,
+    swapBowler,
   } = scoring;
+
+  // Bowler swap dialog state
+  const [bowlerSwapOpen, setBowlerSwapOpen] = useState(false);
 
   // ─── Session persistence ──────────────────────────────────────────────────
 
@@ -2056,6 +2044,20 @@ export function LiveScoringPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsRestore]);
+
+  // Auto-save on every ball recorded (immediate, not debounced)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally only fires on ball count change
+  useEffect(() => {
+    if (!sessionLoaded || isResettingRef.current) return;
+    if (inningsState.balls.length === 0) return;
+    saveSession(id, {
+      inningsNumber,
+      innings1Snapshot,
+      inningsState,
+      tossCompleted,
+      tossBattingTeamIndex,
+    });
+  }, [inningsState.balls.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save session to localStorage whenever relevant state changes
   useEffect(() => {
@@ -2542,7 +2544,7 @@ export function LiveScoringPage() {
     return (
       <div className="min-h-screen flex flex-col pitch-bg">
         <AppHeader />
-        <main className="flex-1 w-full max-w-screen-md mx-auto px-4 py-4 space-y-3">
+        <main className="flex-1 w-full px-2 py-3 space-y-3">
           <Skeleton
             className="h-28 rounded-2xl shimmer"
             data-ocid="scoring.loading_state"
@@ -2573,23 +2575,23 @@ export function LiveScoringPage() {
     <div className="min-h-screen flex flex-col pitch-bg pitch-texture">
       {/* Slim top bar */}
       <div className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b border-border/50">
-        <div className="max-w-screen-md mx-auto px-3 h-12 flex items-center justify-between gap-2">
+        <div className="w-full px-3 h-12 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => void navigate({ to: "/admin" })}
-            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0"
             data-ocid="scoring.back.button"
           >
             <ChevronLeft className="w-4 h-4" />
             <span className="hidden sm:inline">Admin</span>
           </button>
 
-          <div className="flex items-center gap-2 flex-1 justify-center">
-            <span className="font-display font-bold text-sm text-foreground truncate max-w-[200px]">
+          <div className="flex items-center gap-2 flex-1 justify-center min-w-0">
+            <span className="font-display font-bold text-sm text-foreground truncate max-w-[160px]">
               {match.name}
             </span>
             {isActive && (
-              <Badge className="bg-wicket-red/20 text-wicket-red border-wicket-red/40 text-xs gap-1">
+              <Badge className="bg-wicket-red/20 text-wicket-red border-wicket-red/40 text-xs gap-1 shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-wicket-red live-pulse inline-block" />
                 LIVE
               </Badge>
@@ -2597,18 +2599,19 @@ export function LiveScoringPage() {
             {!showFinalResult && (
               <Badge
                 className={cn(
-                  "text-xs",
+                  "text-xs shrink-0",
                   inningsNumber === 1
                     ? "bg-neon-green/10 text-neon-green border-neon-green/30"
                     : "bg-electric-blue/20 text-electric-blue border-electric-blue/40",
                 )}
               >
-                {inningsNumber === 1 ? "1st Inn" : "2nd Inn"}
+                {inningsNumber === 1 ? "1st" : "2nd"}
               </Badge>
             )}
           </div>
 
-          <div className="flex items-center gap-1">
+          {/* Compact action buttons */}
+          <div className="flex items-center gap-0.5 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -2618,7 +2621,7 @@ export function LiveScoringPage() {
                   () => toast.error("Failed to copy link"),
                 );
               }}
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors p-1"
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
               data-ocid="scoring.share.button"
               title="Share scoreboard link"
             >
@@ -2627,7 +2630,7 @@ export function LiveScoringPage() {
             <button
               type="button"
               onClick={() => setQrModalOpen(true)}
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors p-1"
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
               data-ocid="scoring.qr.button"
               title="QR Code for live score"
             >
@@ -2641,17 +2644,17 @@ export function LiveScoringPage() {
                   params: { id },
                 })
               }
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
               data-ocid="scoring.edit_ball.button"
+              title="Edit balls"
             >
               <Edit2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Edit</span>
             </button>
           </div>
         </div>
       </div>
 
-      <main className="flex-1 w-full max-w-screen-md mx-auto px-3 py-4 pb-8 space-y-3">
+      <main className="flex-1 w-full px-2 py-3 pb-8 space-y-3">
         {/* Final Result Screen */}
         {showFinalResult && innings1Snapshot ? (
           <FinalResultScreen
@@ -2939,6 +2942,33 @@ export function LiveScoringPage() {
               </div>
             )}
 
+            {/* ── Swap Buttons ── */}
+            {isActive && (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    swapBatsmen();
+                    toast("Strike rotated", { icon: "🔄", duration: 1200 });
+                  }}
+                  className="h-11 rounded-xl border border-neon-green/40 bg-neon-green/10 text-neon-green hover:bg-neon-green/20 transition-all text-sm font-semibold flex items-center justify-center gap-2 active:scale-95"
+                  data-ocid="scoring.swap_batsmen.button"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Batsman Swap
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBowlerSwapOpen(true)}
+                  className="h-11 rounded-xl border border-electric-blue/40 bg-electric-blue/10 text-electric-blue hover:bg-electric-blue/20 transition-all text-sm font-semibold flex items-center justify-center gap-2 active:scale-95"
+                  data-ocid="scoring.swap_bowler.button"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Bowler Swap
+                </button>
+              </div>
+            )}
+
             {/* ── Scoring buttons ── */}
             <div className="rounded-2xl border border-border/50 bg-card p-3">
               <ScoringButtons
@@ -3049,7 +3079,7 @@ export function LiveScoringPage() {
         availablePlayers={availableNextBatsmen}
       />
 
-      {/* Select next bowler */}
+      {/* Select next bowler (over change) */}
       <SelectBowlerDialog
         open={
           isActive &&
@@ -3057,6 +3087,18 @@ export function LiveScoringPage() {
           !inningsState.pendingBatsmanChange
         }
         onSelect={handleNextBowler}
+        availablePlayers={bowlingTeam?.players ?? []}
+        currentBowlerId={inningsState.bowlerId}
+      />
+
+      {/* Bowler swap dialog (manual mid-over change) */}
+      <SelectBowlerDialog
+        open={bowlerSwapOpen}
+        onSelect={(id) => {
+          swapBowler(id);
+          setBowlerSwapOpen(false);
+          toast("Bowler changed", { icon: "🎯", duration: 1500 });
+        }}
         availablePlayers={bowlingTeam?.players ?? []}
         currentBowlerId={inningsState.bowlerId}
       />

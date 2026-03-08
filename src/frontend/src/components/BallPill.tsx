@@ -114,12 +114,12 @@ export function BallPill({ ball, size = "sm" }: BallPillProps) {
     return (
       <div
         className={cn(
-          "ball-dot",
+          "ball-dot flex items-center justify-center",
           dim,
-          "bg-muted/60 border border-border/50 text-muted-foreground",
+          "bg-muted/60 border border-border/50",
         )}
       >
-        ·
+        <span className="w-2 h-2 rounded-full bg-neon-green/70 block" />
       </div>
     );
   }
