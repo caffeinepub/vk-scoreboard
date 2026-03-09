@@ -8,6 +8,7 @@ export interface Fixture {
   result?: string; // "HomeTeam won" etc
   homeScore?: string; // "120/4"
   awayScore?: string;
+  overs?: number;
 }
 
 export interface Tournament {
@@ -87,6 +88,38 @@ export function useTournaments() {
     [tournaments],
   );
 
+  const addFixture = useCallback(
+    (tournamentId: string, fixture: Fixture) => {
+      const updated = tournaments.map((t) => {
+        if (t.id !== tournamentId) return t;
+        return {
+          ...t,
+          fixtures: [...t.fixtures, fixture],
+        };
+      });
+      saveTournaments(updated);
+      setTournaments(updated);
+    },
+    [tournaments],
+  );
+
+  const updateFixtureMatchId = useCallback(
+    (tournamentId: string, fixtureId: string, matchId: string) => {
+      const updated = tournaments.map((t) => {
+        if (t.id !== tournamentId) return t;
+        return {
+          ...t,
+          fixtures: t.fixtures.map((f) =>
+            f.id === fixtureId ? { ...f, matchId } : f,
+          ),
+        };
+      });
+      saveTournaments(updated);
+      setTournaments(updated);
+    },
+    [tournaments],
+  );
+
   const deleteTournament = useCallback(
     (tournamentId: string) => {
       const updated = tournaments.filter((t) => t.id !== tournamentId);
@@ -107,6 +140,8 @@ export function useTournaments() {
     tournaments,
     createTournament,
     updateFixture,
+    addFixture,
+    updateFixtureMatchId,
     deleteTournament,
     getTournament,
   };

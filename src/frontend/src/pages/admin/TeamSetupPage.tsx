@@ -23,13 +23,17 @@ import {
 import { cn } from "@/lib/utils";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
+  Check,
   CheckCircle,
   ChevronDown,
   ChevronUp,
+  Edit2,
   Hash,
   Play,
   Plus,
+  Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -71,6 +75,17 @@ function TeamSection({
   const [pendingPlayers, setPendingPlayers] = useState<
     Array<{ name: string; jerseyNumber: bigint }>
   >([]);
+
+  // UI-only state for existing team players (can't delete from backend)
+  const [removedPlayerIds, setRemovedPlayerIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [playerOverrides, setPlayerOverrides] = useState<
+    Map<string, { name: string; jerseyNumber: bigint }>
+  >(new Map());
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editJersey, setEditJersey] = useState("");
 
   // Build list of unique saved teams from match history
   const savedTeams = useMemo(() => {
@@ -138,6 +153,34 @@ function TeamSection({
     const jersey = jerseyNum
       ? BigInt(jerseyNum)
       : BigInt(existingTeam.players.length + 1);
+
+    // Build effective visible player list for duplicate check
+    const visiblePlayers = existingTeam.players.filter(
+      (p) => !removedPlayerIds.has(p.id.toString()),
+    );
+    const effectivePlayers = visiblePlayers.map((p) => {
+      const override = playerOverrides.get(p.id.toString());
+      return override
+        ? { name: override.name, jerseyNumber: override.jerseyNumber }
+        : { name: p.name, jerseyNumber: p.jerseyNumber };
+    });
+
+    const nameDup = effectivePlayers.some(
+      (p) => p.name.toLowerCase().trim() === playerName.toLowerCase().trim(),
+    );
+    const numDup = effectivePlayers.some((p) => p.jerseyNumber === jersey);
+
+    if (nameDup) {
+      toast.error("A player with this name already exists in the team.");
+      return;
+    }
+    if (numDup) {
+      toast.error(
+        `A player with jersey number #${jersey.toString()} already exists.`,
+      );
+      return;
+    }
+
     try {
       await addPlayerMutation.mutateAsync({
         matchId,
@@ -153,7 +196,100 @@ function TeamSection({
     }
   };
 
+  const startEditPlayer = (
+    playerId: string,
+    currentName: string,
+    currentJersey: bigint,
+  ) => {
+    setEditingPlayerId(playerId);
+    setEditName(currentName);
+    setEditJersey(currentJersey.toString());
+  };
+
+  const saveEditPlayer = (playerId: string) => {
+    if (!editName.trim()) {
+      toast.error("Player name cannot be empty.");
+      return;
+    }
+    const jersey = editJersey ? BigInt(editJersey) : BigInt(0);
+
+    // Check for duplicates excluding the player being edited
+    if (existingTeam) {
+      const visiblePlayers = existingTeam.players.filter(
+        (p) =>
+          !removedPlayerIds.has(p.id.toString()) &&
+          p.id.toString() !== playerId,
+      );
+      const effectivePlayers = visiblePlayers.map((p) => {
+        const override = playerOverrides.get(p.id.toString());
+        return override
+          ? { name: override.name, jerseyNumber: override.jerseyNumber }
+          : { name: p.name, jerseyNumber: p.jerseyNumber };
+      });
+
+      const nameDup = effectivePlayers.some(
+        (p) => p.name.toLowerCase().trim() === editName.toLowerCase().trim(),
+      );
+      const numDup =
+        editJersey && effectivePlayers.some((p) => p.jerseyNumber === jersey);
+
+      if (nameDup) {
+        toast.error("A player with this name already exists in the team.");
+        return;
+      }
+      if (numDup) {
+        toast.error(
+          `A player with jersey number #${jersey.toString()} already exists.`,
+        );
+        return;
+      }
+    }
+
+    setPlayerOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(playerId, { name: editName.trim(), jerseyNumber: jersey });
+      return next;
+    });
+    setEditingPlayerId(null);
+    toast.success("Player updated.");
+  };
+
+  const cancelEditPlayer = () => {
+    setEditingPlayerId(null);
+    setEditName("");
+    setEditJersey("");
+  };
+
+  const removePlayer = (playerId: string) => {
+    setRemovedPlayerIds((prev) => {
+      const next = new Set(prev);
+      next.add(playerId);
+      return next;
+    });
+    if (editingPlayerId === playerId) {
+      setEditingPlayerId(null);
+    }
+    toast.success("Player removed from list.");
+  };
+
+  const removePendingPlayer = (index: number) => {
+    setPendingPlayers((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const selectedColorObj = COLOR_OPTIONS.find((c) => c.value === teamColor);
+
+  // Get effective player data (with overrides applied)
+  const getEffectivePlayer = (player: Team["players"][number]) => {
+    const override = playerOverrides.get(player.id.toString());
+    return override
+      ? { ...player, name: override.name, jerseyNumber: override.jerseyNumber }
+      : player;
+  };
+
+  const visibleExistingPlayers =
+    existingTeam?.players.filter(
+      (p) => !removedPlayerIds.has(p.id.toString()),
+    ) ?? [];
 
   return (
     <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
@@ -243,7 +379,7 @@ function TeamSection({
                   {pendingPlayers.length} players will be added
                 </div>
                 <div className="space-y-1">
-                  {pendingPlayers.map((p) => (
+                  {pendingPlayers.map((p, idx) => (
                     <div
                       key={`${p.name}-${p.jerseyNumber.toString()}`}
                       className="flex items-center gap-2 text-xs text-foreground/80"
@@ -251,7 +387,16 @@ function TeamSection({
                       <span className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-mono text-primary shrink-0">
                         {p.jerseyNumber.toString()}
                       </span>
-                      {p.name}
+                      <span className="flex-1">{p.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removePendingPlayer(idx)}
+                        className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive transition-colors"
+                        data-ocid={`setup.pending.player.delete_button.${idx + 1}`}
+                        title="Remove player"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -260,7 +405,7 @@ function TeamSection({
                   onClick={() => setPendingPlayers([])}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Clear players
+                  Clear all players
                 </button>
               </div>
             )}
@@ -326,25 +471,118 @@ function TeamSection({
                 {existingTeam.name}
               </span>
               <span className="text-muted-foreground ml-auto text-xs">
-                {existingTeam.players.length} players
+                {visibleExistingPlayers.length} players
               </span>
             </div>
 
-            {/* Players list */}
-            {existingTeam.players.length > 0 && (
+            {/* Players list with edit/remove */}
+            {visibleExistingPlayers.length > 0 && (
               <div className="space-y-1.5">
-                {existingTeam.players.map((p, i) => (
-                  <div
-                    key={p.id.toString()}
-                    data-ocid={`setup.team${teamSlot}.player.item.${i + 1}`}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 text-sm"
-                  >
-                    <span className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-mono text-primary shrink-0">
-                      {p.jerseyNumber.toString()}
-                    </span>
-                    <span className="text-foreground">{p.name}</span>
-                  </div>
-                ))}
+                {visibleExistingPlayers.map((p, i) => {
+                  const effective = getEffectivePlayer(p);
+                  const isEditing = editingPlayerId === p.id.toString();
+
+                  if (isEditing) {
+                    return (
+                      <div
+                        key={p.id.toString()}
+                        className="rounded-lg border border-primary/30 bg-primary/5 p-2.5 space-y-2"
+                      >
+                        <div className="flex gap-2">
+                          <Input
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            placeholder="Player name"
+                            className="flex-1 h-8 text-xs bg-input border-border/60"
+                            autoFocus
+                          />
+                          <div className="relative w-16">
+                            <Hash className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+                            <Input
+                              type="number"
+                              value={editJersey}
+                              onChange={(e) => setEditJersey(e.target.value)}
+                              placeholder="No"
+                              min="0"
+                              max="99"
+                              className="pl-5 h-8 text-xs bg-input border-border/60"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => saveEditPlayer(p.id.toString())}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-neon-green/20 text-neon-green border border-neon-green/30 hover:bg-neon-green/30 transition-colors text-xs font-medium"
+                            data-ocid={`setup.team${teamSlot}.player.edit.save_button`}
+                          >
+                            <Check className="w-3 h-3" />
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditPlayer}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-muted text-muted-foreground border border-border/40 hover:bg-muted/80 transition-colors text-xs"
+                            data-ocid={`setup.team${teamSlot}.player.edit.cancel_button`}
+                          >
+                            <X className="w-3 h-3" />
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removePlayer(p.id.toString())}
+                            className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors text-xs"
+                            data-ocid={`setup.team${teamSlot}.player.edit.delete_button`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={p.id.toString()}
+                      data-ocid={`setup.team${teamSlot}.player.item.${i + 1}`}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 text-sm group hover:bg-muted/60 transition-colors"
+                    >
+                      <span className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-mono text-primary shrink-0">
+                        {effective.jerseyNumber.toString()}
+                      </span>
+                      <span className="text-foreground flex-1 truncate">
+                        {effective.name}
+                      </span>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            startEditPlayer(
+                              p.id.toString(),
+                              effective.name,
+                              effective.jerseyNumber,
+                            )
+                          }
+                          className="w-6 h-6 flex items-center justify-center rounded text-primary/60 hover:text-primary hover:bg-primary/10 transition-colors"
+                          data-ocid={`setup.team${teamSlot}.player.edit_button.${i + 1}`}
+                          title="Edit player"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removePlayer(p.id.toString())}
+                          className="w-6 h-6 flex items-center justify-center rounded text-destructive/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          data-ocid={`setup.team${teamSlot}.player.delete_button.${i + 1}`}
+                          title="Remove player"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 

@@ -1,45 +1,57 @@
-# VK Scoreboard
+# VK Scoreboard – Tournament Page Multi-Match & PDF Export
 
 ## Current State
-
-- Full-featured cricket scoring app with ball-by-ball live scoring, match history, toss, innings management.
-- `useCricketScoring.ts` handles scoring reducer, plus `saveSession`/`loadSession` helpers persisting to localStorage keyed by match ID.
-- Session is saved inside a `useEffect` in `LiveScoringPage.tsx` whenever `inningsState`, `inningsNumber`, `innings1Snapshot`, `tossCompleted`, or `tossBattingTeamIndex` change.
-- The live-sync `useEffect` throttles backend pushes to max once per 5 seconds.
-- Rematch creates a new match via `useRematch()` backend call, then navigates to the new match ID.
-- `MatchHistoryPage.tsx` has a Rematch button that calls `useRematch()` — this can overwrite history of the previous match.
-- `TeamSetupPage.tsx` has a manual form for entering team name + color + players one by one. No way to reuse previously entered teams.
-- `BallPill.tsx` renders a dot ball (0 runs) as a circle with a `·` character — the dot is hard to distinguish visually in the ball-by-ball timeline.
+- `TournamentDetailPage.tsx` shows tournament fixtures (auto-generated round-robin from teams), points table, and allows manual editing of fixture results (scores, result text).
+- `useTournaments.ts` stores tournaments in localStorage. `computePointsTable` calculates standings from fixture results.
+- Fixtures are auto-generated at tournament creation (round-robin from team list). There is no way to manually add new fixtures afterward.
+- No "Start Tournament" button or "Start Match" integration with live scoring.
+- No link between tournament fixtures and actual backend cricket matches (the `matchId` field in `Fixture` exists but is never set or used).
+- Saved teams live in `localStorage` under key `vk_saved_teams` (managed by `AdminDashboardPage`). Each team has `{ id, name, players: [{id, name, jerseyNumber}] }`.
+- `TeamSetupPage` accepts a `matchId` and auto-creates teams/players via backend mutations (`addTeam`, `addPlayer`).
+- Navigation to live scoring is `/admin/match/$id/score`.
+- Points table only updates when fixture `result` string is manually edited.
+- No PDF download functionality on the tournament page.
 
 ## Requested Changes (Diff)
 
 ### Add
-
-1. **Auto-save on every ball** — After every ball is recorded (`RECORD_BALL` action dispatch), immediately call `saveSession()` in addition to the existing debounced `useEffect`. The session save should happen synchronously after `dispatch` settles (via a dedicated `useEffect` on `inningsState.balls.length`). This ensures if the user leaves between balls, the session is always at the latest ball.
-
-2. **Rematch safety guard** — When Rematch is triggered from `MatchHistoryPage.tsx` (not from the final result screen), the previous match data must NOT be altered. Currently `useRematch()` on the backend creates a new match copying teams/players — that is correct. The frontend fix: confirm the rematch should clear only the NEW match's session, never the old one. Add a confirmation dialog in `MatchHistoryPage.tsx` before triggering rematch, explaining "This will start a fresh match with the same teams. The previous match result will be kept." to prevent accidental triggers. The old match's backend data stays untouched; only the new match gets a session.
-
-3. **"Use This Team" on TeamSetupPage** — In `TeamSetupPage.tsx`, above the Team Name input (when a team hasn't been added yet), show a collapsible section "Use a saved team" that lists team names from all previous matches (extracted from `useListMatches()` data). Each saved team shows a "Use This Team" button. When clicked, it pre-fills the team name field and automatically queues all that team's player names + jersey numbers for bulk-add, then shows a preview list with a single "Add Team + Players" action.
-
-4. **Green dot indicator on dot-ball pills** — In `BallPill.tsx`, for the `ball.runs === 0` case (dot ball), add a small green filled circle (`w-2 h-2 rounded-full bg-neon-green`) positioned inside the circle (centered), replacing or accompanying the `·` character, so dot balls are clearly distinguishable at a glance.
+- **"+  Add Match" button** inside the Fixtures section of `TournamentDetailPage`. Opens a dialog to select Team 1 and Team 2 from saved teams (loaded from `vk_saved_teams` localStorage). Creates a new fixture and adds it to the tournament's fixture list immediately.
+- **"Start Tournament" button** at the top of `TournamentDetailPage` (visible when there are fixtures). Shows all fixtures in a modal/panel; each fixture has a "Start Match" button.
+- **"Start Match" flow**: clicking "Start Match" on a fixture:
+  1. Creates a backend match via `createMatch` mutation.
+  2. Auto-creates both teams and all their players via `addTeam` + `addPlayer` mutations using the saved team data (looked up from `vk_saved_teams`).
+  3. Stores the resulting backend `matchId` into the fixture's `matchId` field.
+  4. Navigates to `/admin/match/$id/score` (skip team setup entirely).
+- **Auto Points Table update**: After a live match ends, the result is written back to the tournament fixture. Detect completed matches by polling the backend match state or by a "Save Result to Tournament" button on the result screen. The simpler path: add a callback/hook so when `LiveScoringPage` completes the match and the user views the result, a "Save to Tournament" option appears if the match was started from a tournament fixture. Alternatively, detect via `matchId` in the fixture and read the result from localStorage match session.
+- **"Download Tournament PDF" button** on `TournamentDetailPage`. Generates a clean print-ready PDF (using `window.print()` with a print-specific hidden div, or `jsPDF`/`html2canvas`) containing:
+  - Tournament Name
+  - Teams List
+  - Points Table (MP, W, L, Pts)
+  - Match Results (each fixture with scores and result)
+  - Player Statistics (from `vk_player_stats` localStorage if available)
+- **addFixture function** in `useTournaments` hook to add a single fixture to an existing tournament.
+- **updateFixtureMatchId function** in `useTournaments` to link a fixture to a backend matchId after starting.
 
 ### Modify
-
-- `LiveScoringPage.tsx` — Add a focused `useEffect` on `inningsState.balls.length` that calls `saveSession` immediately (not debounced) whenever a new ball is added. The existing broader save effect is kept for toss/innings changes.
-- `BallPill.tsx` — Update the 0-runs case to render a green dot inside the circle.
-- `TeamSetupPage.tsx` — Add the "Use a saved team" section with saved team picker.
-- `MatchHistoryPage.tsx` — Add a confirmation dialog before rematch is executed (the Rematch button itself needs to be added here as it currently doesn't exist — matches link to the public scoreboard, not to a rematch action).
+- `useTournaments.ts`: add `addFixture(tournamentId, fixture)` and `updateFixtureMatchId(tournamentId, fixtureId, matchId)` methods.
+- `TournamentDetailPage.tsx`: 
+  - Add "+ Add Match" button in Fixtures section header.
+  - Add "Start Tournament" button in the page header area.
+  - Fixtures display: show "Start Match" button for fixtures without a matchId, and "View Match" button for those that have one.
+  - Points Table: recalculate in real-time from fixture results (already done via `computePointsTable`).
+  - Add "Download PDF" button in the page header area.
+- When a saved team is used to start a match from a tournament, skip `TeamSetupPage` entirely by pre-creating teams/players before navigating to the score page.
 
 ### Remove
-
-- Nothing to remove.
+- Nothing removed.
 
 ## Implementation Plan
-
-1. **BallPill.tsx** — Replace the `·` text with a small green dot (`w-2 h-2 bg-neon-green rounded-full`) inside the dot-ball circle. Keep the circle's muted styling.
-
-2. **LiveScoringPage.tsx (auto-save on every ball)** — Add a `useEffect` that depends on `[inningsState.balls.length]` and calls `saveSession(id, { inningsNumber, innings1Snapshot, inningsState, tossCompleted, tossBattingTeamIndex })` immediately whenever the balls array length changes. Guard it with `sessionLoaded && !isResettingRef.current` to avoid saves during reset.
-
-3. **MatchHistoryPage.tsx (Rematch button + confirmation)** — Add a Rematch button to `MatchHistoryCard` for completed matches. Wire it to a confirmation `AlertDialog` ("Start a fresh rematch? The previous match result will remain saved."). On confirm, call `useRematch()` and navigate to the new match's scoring page. The old match's session in localStorage is NOT cleared.
-
-4. **TeamSetupPage.tsx ("Use This Team")** — In `TeamSection`, import `useListMatches`. When no team has been added yet, show a "Use a saved team" accordion below the team name input. It lists unique team names from all matches that have at least 1 player. Clicking a team name pre-fills `teamName` and sets a `pendingPlayers` list. After the team is created, automatically fire `addPlayer` mutations for each pending player. Show a small player count badge next to each saved team name.
+1. Extend `useTournaments` hook: add `addFixture` and `updateFixtureMatchId` functions.
+2. Update `TournamentDetailPage`:
+   a. Add "+ Add Match" dialog: loads `vk_saved_teams` from localStorage, shows two selects for Team 1 / Team 2, on confirm calls `addFixture`.
+   b. Add "Start Tournament" panel/modal at top showing all fixtures with "Start Match" buttons.
+   c. "Start Match" logic: call `createMatch` → `addTeam` × 2 → `addPlayer` × N → call `updateFixtureMatchId` → navigate to `/admin/match/$id/score`.
+   d. Fixture rows: show status badge (Not Started / In Progress / Completed), "Start Match" / "View Match" buttons.
+   e. Add "Download Tournament PDF" button: renders a hidden print div with tournament data and calls `window.print()` with `@media print` CSS, or uses a simple `jsPDF` inline approach.
+3. Ensure points table auto-reflects any fixture result changes (already reactive since `computePointsTable` runs on every render from fixture data).
+4. Add `data-ocid` markers to all new interactive elements.
